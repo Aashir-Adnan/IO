@@ -43,6 +43,10 @@
   in Python per call — fine now, revisit before Plan 2 query load.
 - Occasion dedupe is global by lowercased name (two people's "birthday" collapse;
   a later better `date_phrase` never updates the row).
+- Add an integration test for `persist_store` that COMMITS and reopens a fresh
+  session to prove the utterance row physically survives a `PersistError`
+  (current tests use the rolled-back `db` fixture; the transaction semantics were
+  verified by inspection in the Plan 1 final review but not by a committing test).
 - Declare the b-tree/GIN/HNSW indexes on the ORM models (currently only in
   `0001_initial.py`) so `alembic check` / autogenerate is clean and can gate CI.
   Until then the migration is hand-maintained (conftest now builds the test
