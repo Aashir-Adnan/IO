@@ -21,6 +21,11 @@ canonical name or alias (case-insensitive) → use it; (2) fuzzy match
 (3) vector similarity above the threshold (default 0.85) → ambiguous, hold for
 the gate; (4) no match → stage a new entity.
 
+**Ownership split** — `io_assistant.resolve.resolver.EntityResolver` owns
+person/place/item creation *and* computing/storing their `embedding`
+(`EntityResolver.create`). `persist.writer` owns `records` rows, `occasions`
+rows, and all link rows (plus their embeddings).
+
 **Confirmation gate** — triggered only by: an ambiguous vector-only resolve, or
 a record with `confidence` below the gate threshold (default 0.6), or a
 date/time the grounder could not resolve. When triggered, the assistant emits a
