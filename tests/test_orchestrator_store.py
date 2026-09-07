@@ -119,6 +119,89 @@ def test_gated_low_confidence_message(db, config, fake_backend, monkeypatch):
 
 
 @requires_db
+def test_write_failure_keeps_utterance_and_does_not_raise(
+    db, config, fake_backend, monkeypatch
+):
+    """A failed write pass must never take the verbatim utterance with it:
+    handle() returns a message instead of raising, so the CLI still commits."""
+    fake_backend.set_intent("store")
+    fake_backend.set_extraction(
+        ExtractionResult(
+            people=[ExtractedPerson(name="Nafay", confidence=0.95)],
+            records=[
+                ExtractedRecord(
+                    kind="event",
+                    domain="social",
+                    title="dinner",
+                    when_phrase="today",
+                    people=["Nafay"],
+                    confidence=0.9,
+                )
+            ],
+        )
+    )
+
+    class FailingEmbedder:
+        def __init__(self):
+            self.calls = 0
+
+        def embed_one(self, t):
+            self.calls += 1
+            if self.calls >= 2:
+                raise RuntimeError("boom")
+            return [0.0] * 768
+
+        def embed(self, ts):
+            return [self.embed_one(t) for t in ts]
+
+    import io_assistant.orchestrator as orch
+
+    monkeypatch.setattr(orch, "Embedder", lambda cfg: FailingEmbedder())
+    o = Orchestrator(config, session_factory=lambda: db, backend=fake_backend)
+    text = "I had dinner with Nafay"
+    res = o.handle(text, captured_at=NOW)  # must NOT raise
+    assert res.intent == "store" and res.stored is None
+    assert "kept a note" in res.message
+    assert db.query(m.Record).count() == 0
+    assert db.query(m.Utterance).filter_by(text=text).count() == 1
+
+
+@requires_db
+def test_confirm_replays_without_reextraction(db, config, fake_backend, monkeypatch):
+    """Confirming a gated store replays the held extraction: no re-route, no
+    re-extract, and no second utterance row."""
+    fake_backend.set_intent("store")
+    first = ExtractionResult(
+        records=[ExtractedRecord(kind="note", title="original title", confidence=0.2)]
+    )
+    fake_backend.set_extraction(first)
+    _stub_embedder(monkeypatch)
+    o = Orchestrator(config, session_factory=lambda: db, backend=fake_backend)
+
+    res = o.handle("maybe something happened", captured_at=NOW)
+    assert res.stored is not None and res.stored.gated is True
+    assert res.pending is not None
+    assert db.query(m.Utterance).count() == 1
+
+    # The model would now answer differently — the replay must ignore it.
+    fake_backend.set_extraction(
+        ExtractionResult(
+            records=[ExtractedRecord(kind="note", title="DIFFERENT", confidence=0.9)]
+        )
+    )
+    calls_before = list(fake_backend.calls)
+
+    res2 = o.handle(res.pending.text, pending=res.pending)
+    assert res2.stored is not None and not res2.stored.gated
+    assert len(res2.stored.record_ids) == 1
+    rec = db.get(m.Record, res2.stored.record_ids[0])
+    assert rec.title == "original title"
+    assert rec.source_utterance_id == res.pending.utterance_id
+    assert db.query(m.Utterance).count() == 1
+    assert fake_backend.calls == calls_before  # no route, no extract
+
+
+@requires_db
 def test_doctor_cli_smoke():
     from typer.testing import CliRunner
     from io_assistant.cli import app

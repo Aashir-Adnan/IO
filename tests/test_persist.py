@@ -141,8 +141,12 @@ def test_write_failure_keeps_only_utterance_and_raises(db, config):
 
 
 @requires_db
-def test_ambiguous_entity_confirmed_creates_new(db, config):
-    db.add(m.Person(canonical_name="Jonathan", aliases=[], embedding=[1.0] + [0.0] * 767))
+def test_ambiguous_entity_confirmed_uses_candidate(db, config):
+    """Confirming an ambiguity gate means 'yes, that candidate' — it must
+    accept the suggestion, not create the duplicate the gate prevents."""
+    jonathan = m.Person(canonical_name="Jonathan", aliases=[],
+                        embedding=[1.0] + [0.0] * 767)
+    db.add(jonathan)
     db.flush()
     emb = StubEmbedder({"Jon": [1.0] + [0.0] * 767})
     ext = ExtractionResult(
@@ -153,5 +157,29 @@ def test_ambiguous_entity_confirmed_creates_new(db, config):
         utterance_text="ran into Jon", source="text", captured_at=NOW,
         extraction=ext, now=NOW, confidence_gate=0.6, confirmed=True)
     assert not out.gated and len(out.record_ids) == 1
-    assert ("person", "Jon") in out.new_entities
-    assert db.query(m.Person).filter_by(canonical_name="Jon").count() == 1
+    assert out.new_entities == []
+    assert db.query(m.Person).filter_by(canonical_name="Jon").count() == 0
+    links = db.query(m.RecordPerson).filter_by(record_id=out.record_ids[0]).all()
+    assert [l.person_id for l in links] == [jonathan.id]
+
+
+@requires_db
+def test_repeated_name_in_extraction_creates_one_entity(db, config):
+    """A name repeated (in any casing) within one extraction must resolve and
+    create exactly once — no orphaned duplicate rows."""
+    ext = ExtractionResult(
+        people=[ExtractedPerson(name="Nafay", confidence=0.9),
+                ExtractedPerson(name="Nafay", confidence=0.9),
+                ExtractedPerson(name="nafay", confidence=0.9)],
+        records=[ExtractedRecord(kind="note", domain="social", title="saw Nafay",
+                                 when_phrase="today", people=["Nafay"],
+                                 confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="ran into Nafay", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    assert not out.gated and len(out.record_ids) == 1
+    assert db.query(m.Person).filter_by(canonical_name="Nafay").count() == 1
+    assert db.query(m.Person).count() == 1
+    assert out.new_entities == [("person", "Nafay")]
+    assert db.query(m.RecordPerson).filter_by(record_id=out.record_ids[0]).count() == 1

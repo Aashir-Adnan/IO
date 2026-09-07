@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -34,17 +35,41 @@ TEST_DB_URL = os.environ.get("IO_TEST_DATABASE_URL")
 requires_db = pytest.mark.skipif(not TEST_DB_URL, reason="IO_TEST_DATABASE_URL not set")
 
 
+def _alembic_config():
+    """Alembic config pointed at the TEST database, with absolute paths so it
+    works regardless of the pytest working directory."""
+    from alembic.config import Config as AlembicConfig
+
+    root = Path(__file__).resolve().parents[1]
+    cfg = AlembicConfig(str(root / "alembic.ini"))
+    cfg.set_main_option(
+        "script_location", str(root / "io_assistant" / "db" / "migrations")
+    )
+    # migrations/env.py honours an explicitly-set sqlalchemy.url first.
+    cfg.set_main_option("sqlalchemy.url", TEST_DB_URL)
+    return cfg
+
+
 @pytest.fixture(scope="session")
 def engine():
+    """Test schema is built by the real Alembic migration, not create_all —
+    so the migration DDL (indexes, HNSW, NOT NULL defaults) is exercised."""
     if not TEST_DB_URL:
         pytest.skip("IO_TEST_DATABASE_URL not set")
+    from alembic import command
+
     eng = make_engine(TEST_DB_URL)
     with eng.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Leftovers from an older create_all-built schema would collide with
+        # the migration's CREATE TABLEs; start from a known-empty database.
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
     Base.metadata.drop_all(eng)
-    Base.metadata.create_all(eng)
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "head")
     yield eng
-    Base.metadata.drop_all(eng)
+    command.downgrade(cfg, "base")
 
 
 @pytest.fixture

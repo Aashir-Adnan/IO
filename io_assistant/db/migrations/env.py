@@ -18,6 +18,11 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
+    # An explicitly-set sqlalchemy.url wins (programmatic callers, e.g. the
+    # test suite, set it on the Config object); then the env var; then config.
+    url = config.get_main_option("sqlalchemy.url", None)
+    if url:
+        return url
     url = os.environ.get("IO_DATABASE_URL")
     if url:
         return url

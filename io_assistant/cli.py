@@ -4,7 +4,7 @@ import typer
 
 from io_assistant.config import load_config
 from io_assistant.db.base import make_engine, make_session_factory
-from io_assistant.orchestrator import Orchestrator
+from io_assistant.orchestrator import Orchestrator, PendingStore
 
 app = typer.Typer(help="io — personal knowledge assistant")
 
@@ -35,7 +35,8 @@ def repl() -> None:
     """Interactive loop."""
     config = load_config()
     engine, factory = _make_session_factory(config)
-    pending_text: str | None = None  # text of a gated store awaiting confirmation
+    # A gated store held verbatim (utterance id + extraction) for replay.
+    pending_store: PendingStore | None = None
     try:
         while True:
             try:
@@ -49,22 +50,23 @@ def repl() -> None:
             if not stripped:
                 continue
 
-            is_confirm = pending_text is not None and stripped.lower() in {"y", "yes"}
-            text = pending_text if is_confirm else line
+            is_confirm = pending_store is not None and stripped.lower() in {"y", "yes"}
 
             session = factory()
             try:
                 orch = Orchestrator(config, session_factory=lambda s=session: s)
-                res = orch.handle(text, confirmed=is_confirm)
+                if is_confirm:
+                    # Replay the held extraction — no re-route, no re-extract,
+                    # no second utterance row.
+                    res = orch.handle(pending_store.text, pending=pending_store)
+                else:
+                    res = orch.handle(line)
                 session.commit()
             finally:
                 session.close()
 
             print(res.message)
-            if res.stored is not None and res.stored.gated:
-                pending_text = text
-            else:
-                pending_text = None
+            pending_store = res.pending
     finally:
         engine.dispose()
 

@@ -21,11 +21,31 @@ depends_on: Union[str, Sequence[str], None] = None
 
 EMBED_DIM = 768
 
-_ENTITY_COLS = (
-    sa.Column("embedding", Vector(EMBED_DIM), nullable=True),
-    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-)
+
+def _timestamp_cols() -> tuple[sa.Column, ...]:
+    # NOT NULL + server default — matches the ORM, which types these as
+    # non-optional and never sets them from Python.
+    return (
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+    )
+
+
+def _entity_cols() -> tuple[sa.Column, ...]:
+    return (
+        sa.Column("embedding", Vector(EMBED_DIM), nullable=True),
+        *_timestamp_cols(),
+    )
 
 
 def upgrade() -> None:
@@ -48,7 +68,7 @@ def upgrade() -> None:
         sa.Column("canonical_name", sa.Text(), nullable=False),
         sa.Column("aliases", postgresql.ARRAY(sa.Text()), nullable=False),
         sa.Column("notes", sa.Text(), nullable=True),
-        *_ENTITY_COLS,
+        *_entity_cols(),
     )
 
     op.create_table(
@@ -57,7 +77,7 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("type", sa.Text(), nullable=True),
         sa.Column("aliases", postgresql.ARRAY(sa.Text()), nullable=False),
-        *_ENTITY_COLS,
+        *_entity_cols(),
     )
 
     op.create_table(
@@ -66,7 +86,7 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("category", sa.Text(), nullable=True),
         sa.Column("aliases", postgresql.ARRAY(sa.Text()), nullable=False),
-        *_ENTITY_COLS,
+        *_entity_cols(),
     )
 
     op.create_table(
@@ -75,7 +95,7 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("date", sa.Date(), nullable=True),
         sa.Column("recurrence_rule", sa.Text(), nullable=True),
-        *_ENTITY_COLS,
+        *_entity_cols(),
     )
 
     op.create_table(
@@ -103,8 +123,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("embedding", Vector(EMBED_DIM), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        *_timestamp_cols(),
     )
 
     def _link(name: str, a: str, a_tbl: str, b: str, b_tbl: str) -> None:

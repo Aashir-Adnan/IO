@@ -50,37 +50,50 @@ def persist_store(
     now: datetime,
     confidence_gate: float,
     confirmed: bool = False,
+    existing_utterance_id: int | None = None,
 ) -> PersistResult:
-    # 1. Utterance row — always kept.
-    utt = m.Utterance(
-        text=utterance_text,
-        source=source,
-        captured_at=captured_at,
-        resolved_intent="store",
-    )
-    session.add(utt)
-    session.flush()
-    utterance_id = utt.id
+    # 1. Utterance row — always kept. On a confirm-replay we reuse the
+    #    utterance recorded by the gated first pass instead of inserting one.
+    if existing_utterance_id is not None:
+        utt = session.get(m.Utterance, existing_utterance_id)
+        if utt is None:
+            raise PersistError(
+                f"utterance {existing_utterance_id} no longer exists"
+            )
+        utterance_id = utt.id
+    else:
+        utt = m.Utterance(
+            text=utterance_text,
+            source=source,
+            captured_at=captured_at,
+            resolved_intent="store",
+        )
+        session.add(utt)
+        session.flush()
+        utterance_id = utt.id
 
-    # 2. Resolve pass (read-only).
+    # 2. Resolve pass (read-only). Deduped by (etype, lowered name) so a name
+    #    repeated inside one extraction is resolved — and later created — once.
     outcomes: dict[tuple[str, str], object] = {}
+    entity_names: dict[tuple[str, str], str] = {}
+    entity_aliases: dict[tuple[str, str], list[str]] = {}
     for etype, attr in _ENTITY_LISTS:
         for ent in getattr(extraction, attr):
-            outcomes[(etype, ent.name.lower())] = resolver.resolve(
-                etype, ent.name, list(ent.aliases)
-            )
+            key = (etype, ent.name.lower())
+            if key in outcomes:
+                for alias in ent.aliases:
+                    if alias not in entity_aliases[key]:
+                        entity_aliases[key].append(alias)
+                continue
+            entity_names[key] = ent.name
+            entity_aliases[key] = list(ent.aliases)
+            outcomes[key] = resolver.resolve(etype, ent.name, list(ent.aliases))
 
     # 3. Gate check.
     gate_reasons: list[str] = []
     for (etype, _lname), outcome in outcomes.items():
         if getattr(outcome, "ambiguous", False):
-            # recover the original-cased name
-            name = next(
-                e.name
-                for _et, a in _ENTITY_LISTS
-                for e in getattr(extraction, a)
-                if _et == etype and e.name.lower() == _lname
-            )
+            name = entity_names[(etype, _lname)]
             gate_reasons.append(
                 f"ambiguous {etype} '{name}' — did you mean "
                 f"'{outcome.candidate_name}'?"
@@ -123,6 +136,8 @@ def persist_store(
                 confirmed,
                 utterance_id,
                 outcomes,
+                entity_names,
+                entity_aliases,
             )
     except PersistError:
         raise
@@ -139,21 +154,29 @@ def _write(
     confirmed: bool,
     utterance_id: int,
     outcomes: dict,
+    entity_names: dict,
+    entity_aliases: dict,
 ) -> PersistResult:
     new_entities: list[tuple[str, str]] = []
     entity_ids: dict[tuple[str, str], int] = {}
 
-    for etype, attr in _ENTITY_LISTS:
-        for ent in getattr(extraction, attr):
-            key = (etype, ent.name.lower())
-            outcome = outcomes[key]
-            if outcome.entity_id is not None:
-                entity_ids[key] = outcome.entity_id
-            else:
-                # is_new, or ambiguous under confirmed → create
-                eid = resolver.create(etype, ent.name, list(ent.aliases))
-                entity_ids[key] = eid
-                new_entities.append((etype, ent.name))
+    # `outcomes` is already deduped by (etype, lowered name), so each unique
+    # entity is created at most once and every later reference reuses the id.
+    for key, outcome in outcomes.items():
+        etype, _lname = key
+        name = entity_names[key]
+        if outcome.entity_id is not None:
+            entity_ids[key] = outcome.entity_id
+        elif getattr(outcome, "ambiguous", False):
+            # Confirmed past an ambiguity gate means "yes, that candidate" —
+            # accept the suggestion rather than creating the duplicate the
+            # gate exists to prevent.
+            entity_ids[key] = outcome.candidate_id
+        else:
+            entity_ids[key] = resolver.create(
+                etype, name, list(entity_aliases[key])
+            )
+            new_entities.append((etype, name))
 
     # Occasions: dedupe by case-insensitive name.
     occasion_ids: dict[str, int] = {}

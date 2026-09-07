@@ -39,14 +39,84 @@ def test_arcadian_scenario_with_fake_backend(db, config, fake_backend, monkeypat
     assert db.query(m.RecordPlace).filter_by(record_id=rec.id).count() == 1
     assert db.query(m.RecordOccasion).filter_by(record_id=rec.id).count() == 1
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _RecordingClient:
+    """Stands in for httpx.Client: records every URL posted to, and answers
+    with an Ollama-shaped payload. Opens no socket of its own."""
+
+    urls: list[str] = []
+
+    def __init__(self, *a, **kw):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def post(self, url, json=None, **kw):
+        _RecordingClient.urls.append(url)
+        if url.endswith("/api/embed"):
+            n = len(json["input"])
+            return _FakeResponse({"embeddings": [[0.0] * 768 for _ in range(n)]})
+        return _FakeResponse({"message": {"content": "STORE"}})
+
+
 def test_local_first_no_foreign_sockets(config, monkeypatch):
-    """LocalBackend + Embedder must only ever connect to localhost."""
+    """LocalBackend + Embedder must only ever talk to localhost. Traffic is
+    actually driven through the guard — construction alone proves nothing."""
+    import httpx
+
+    from io_assistant.backend.embed import Embedder
+    from io_assistant.backend.local import LocalBackend
+
+    foreign: list[str] = []
     real_connect = socket.socket.connect
+
     def guard(self, address):
         host = address[0] if isinstance(address, tuple) else address
-        assert host in ("127.0.0.1", "::1", "localhost"), f"foreign socket: {host}"
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            foreign.append(str(host))
         return real_connect(self, address)
+
     monkeypatch.setattr(socket.socket, "connect", guard)
-    # constructing the local backend + embedder must not dial out
+    _RecordingClient.urls = []
+    monkeypatch.setattr(httpx, "Client", _RecordingClient)
+
+    backend = LocalBackend(config)
+    embedder = Embedder(config)
+    assert backend.route("test") == "store"
+    assert len(embedder.embed_one("test")) == 768
+
+    assert _RecordingClient.urls, "no traffic was driven through the guard"
+    for url in _RecordingClient.urls:
+        host = httpx.URL(url).host
+        assert host in ("localhost", "127.0.0.1"), f"foreign host: {host}"
+    assert foreign == [], f"foreign sockets opened: {foreign}"
+
+
+def test_local_provider_structurally_cannot_be_anthropic(config, monkeypatch):
+    """Documents the structural half: only provider='anthropic' can ever
+    produce an AnthropicBackend — local mode cannot reach the API."""
+    from io_assistant.backend.anthropic_backend import AnthropicBackend
     from io_assistant.backend.factory import build_backend
-    build_backend(config)
+    from io_assistant.backend.local import LocalBackend
+
+    assert isinstance(build_backend(config), LocalBackend)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-used")
+    remote = config.model_copy(
+        update={"backend": config.backend.model_copy(update={"provider": "anthropic"})}
+    )
+    assert isinstance(build_backend(remote), AnthropicBackend)  # no call made

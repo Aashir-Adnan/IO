@@ -8,12 +8,24 @@ from io_assistant.backend.factory import build_backend
 from io_assistant.config import Config
 from io_assistant.db import models as m
 from io_assistant.extract.extractor import Extractor
-from io_assistant.models_domain import Intent
-from io_assistant.persist.writer import PersistResult, persist_store
+from io_assistant.models_domain import ExtractionResult, Intent
+from io_assistant.persist.writer import PersistError, PersistResult, persist_store
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.route.router import Router
 
-__all__ = ["HandleResult", "Orchestrator"]
+__all__ = ["HandleResult", "Orchestrator", "PendingStore"]
+
+
+@dataclass
+class PendingStore:
+    """A gated store held for replay, so confirming re-uses the *same*
+    utterance and the *same* extraction instead of re-running the LLM."""
+
+    utterance_id: int
+    extraction: ExtractionResult
+    text: str
+    source: str
+    captured_at: datetime
 
 
 @dataclass
@@ -21,6 +33,7 @@ class HandleResult:
     intent: Intent
     stored: PersistResult | None
     message: str
+    pending: PendingStore | None = None
 
 
 class Orchestrator:
@@ -39,7 +52,21 @@ class Orchestrator:
         source: str = "text",
         captured_at: datetime | None = None,
         confirmed: bool = False,
+        pending: PendingStore | None = None,
     ) -> HandleResult:
+        if pending is not None:
+            # Replay of a gated store: no Route, no Extract, no new utterance.
+            return self._store(
+                self._session_factory(),
+                text=pending.text,
+                source=pending.source,
+                captured_at=pending.captured_at,
+                now=pending.captured_at,
+                extraction=pending.extraction,
+                confirmed=True,
+                existing_utterance_id=pending.utterance_id,
+            )
+
         if captured_at is None:
             captured_at = datetime.now(timezone.utc)
         now = captured_at
@@ -76,27 +103,77 @@ class Orchestrator:
                 "store", None, "I couldn't make sense of that to store it."
             )
 
-        resolver = EntityResolver(session, self._embedder, self._config.resolver)
-        result = persist_store(
+        return self._store(
             session,
-            self._embedder,
-            resolver,
-            utterance_text=text,
+            text=text,
             source=source,
             captured_at=captured_at,
-            extraction=extraction,
             now=now,
-            confidence_gate=self._config.resolver.confidence_gate_threshold,
+            extraction=extraction,
             confirmed=confirmed,
         )
 
-        if result.gated:
-            message = (
-                "Before I store this: "
-                + "; ".join(result.gate_reasons)
-                + ". Reply 'yes' to confirm."
+    def _store(
+        self,
+        session,
+        *,
+        text: str,
+        source: str,
+        captured_at: datetime,
+        now: datetime,
+        extraction: ExtractionResult,
+        confirmed: bool,
+        existing_utterance_id: int | None = None,
+    ) -> HandleResult:
+        resolver = EntityResolver(session, self._embedder, self._config.resolver)
+        try:
+            result = persist_store(
+                session,
+                self._embedder,
+                resolver,
+                utterance_text=text,
+                source=source,
+                captured_at=captured_at,
+                extraction=extraction,
+                now=now,
+                confidence_gate=self._config.resolver.confidence_gate_threshold,
+                confirmed=confirmed,
+                existing_utterance_id=existing_utterance_id,
             )
-            return HandleResult("store", result, message)
+        except PersistError as e:
+            # The write pass rolled back to its SAVEPOINT; the utterance row
+            # flushed before it is still live in this session and the caller
+            # commits after we return. Never re-raise — that would take the
+            # verbatim utterance down with the failed write.
+            return HandleResult(
+                "store",
+                None,
+                "Something went wrong while storing that — I've kept a note "
+                f"of what you said, but couldn't file it. ({e})",
+            )
+
+        if result.gated:
+            suffix = (
+                " Reply 'yes' to use it, or rephrase."
+                if any(r.startswith("ambiguous ") for r in result.gate_reasons)
+                else " Reply 'yes' to confirm."
+            )
+            joined = "; ".join(result.gate_reasons)
+            if not joined.endswith(("?", ".", "!")):
+                joined += "."
+            message = "Before I store this: " + joined + suffix
+            return HandleResult(
+                "store",
+                result,
+                message,
+                pending=PendingStore(
+                    utterance_id=result.utterance_id,
+                    extraction=extraction,
+                    text=text,
+                    source=source,
+                    captured_at=captured_at,
+                ),
+            )
 
         message = "Stored: " + self._summarize(session, result)
         return HandleResult("store", result, message)
