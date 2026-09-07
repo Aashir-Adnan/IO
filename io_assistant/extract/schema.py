@@ -1,0 +1,2 @@
+SCHEMA_JSON = "{}"
+FEWSHOT = ""

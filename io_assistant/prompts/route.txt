@@ -1,0 +1,8 @@
+You classify a single user utterance into exactly one intent.
+Reply with ONE word, uppercase, nothing else:
+STORE  - the user is telling you something to remember (an event, task, fact)
+QUERY  - the user is asking a question about things they told you before
+UNKNOWN - anything else
+
+Utterance:
+{utterance}
