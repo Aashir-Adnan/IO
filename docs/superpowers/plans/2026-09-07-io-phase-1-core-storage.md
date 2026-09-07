@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-07-io-phase-1-design.md` (read §1–4, §8, §10, §13 before starting)
 
+**Task 0 sets up the local environment** (PostgreSQL + pgvector via Docker, Ollama, `uv`) and must complete — `pwsh scripts/check-env.ps1` green — before Task 1.
+
 ## Global Constraints
 
 - **Python** ≥ 3.11 (uses stdlib `tomllib`). Dependency management via `uv`.
@@ -89,6 +91,132 @@ tests/
 .claude/
   knowledge/  rules/  skills/  state/
 CLAUDE.md
+```
+
+---
+
+## Task 0: Local environment setup (PostgreSQL + pgvector + Ollama + uv)
+
+**Files:**
+- Create: `docker-compose.yml`, `scripts/setup.ps1`, `scripts/check-env.ps1`
+- Modify: `.claude/skills/run-local.md` is created in Task 2 — this task's commands are its source of truth, so keep them in sync.
+- Test: `scripts/check-env.ps1` is the verification (no pytest here).
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: a running PostgreSQL 16 with `pgvector` on `localhost:5432` (databases `io` and `io_test`), a running Ollama on `localhost:11434` with `llama3.2:3b` and `nomic-embed-text` pulled, `uv` on PATH, and a `.env` file. `scripts/check-env.ps1` exits 0 only when all of that is true.
+
+Platform: Windows 11 + PowerShell. PostgreSQL runs in Docker (cleanest way to get `pgvector` on Windows); Ollama runs natively (it ships a Windows installer and needs GPU access). If the user does not want Docker, a native-PostgreSQL fallback is documented in Step 6.
+
+- [ ] **Step 1: Install `uv`** (if missing)
+
+Run (PowerShell):
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+Verify: `uv --version`
+
+- [ ] **Step 2: Install Ollama** (if missing)
+
+Download and run the installer from `https://ollama.com/download/windows` (this is a user action — do not script a silent download). After install, Ollama runs as a background service.
+Verify: `ollama --version` and `curl http://localhost:11434/api/version`
+
+- [ ] **Step 3: Pull the models**
+
+Run:
+```powershell
+ollama pull llama3.2:3b
+ollama pull nomic-embed-text
+```
+Verify: `ollama list` shows both.
+
+- [ ] **Step 4: Create `docker-compose.yml`** (PostgreSQL + pgvector)
+
+```yaml
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: io
+      POSTGRES_PASSWORD: io
+      POSTGRES_DB: io
+    ports:
+      - "5432:5432"
+    volumes:
+      - io_pgdata:/var/lib/postgresql/data
+      - ./scripts/initdb:/docker-entrypoint-initdb.d
+volumes:
+  io_pgdata:
+```
+
+Create `scripts/initdb/01-create-test-db.sql`:
+```sql
+CREATE DATABASE io_test OWNER io;
+```
+
+- [ ] **Step 5: Start PostgreSQL and enable the extension**
+
+Run:
+```powershell
+docker compose up -d
+# wait for readiness, then enable pgvector in both databases
+docker compose exec -T db psql -U io -d io      -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker compose exec -T db psql -U io -d io_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+Verify: `docker compose exec -T db psql -U io -d io -c "\dx"` lists `vector`.
+
+- [ ] **Step 6: Native-PostgreSQL fallback (only if not using Docker)**
+
+Document in `run-local.md`, do not execute unless the user asks:
+1. Install PostgreSQL 16 from the EDB installer.
+2. Install pgvector: easiest is `nix`/prebuilt — on Windows, install via the
+   `pgvector` release DLL matching PG16, copied into `lib/` and
+   `share/extension/`, or build with MSVC per the pgvector README.
+3. `createdb -U postgres io` and `createdb -U postgres io_test`; create role
+   `io` with password `io`; `CREATE EXTENSION vector;` in each DB.
+
+- [ ] **Step 7: Create `.env`**
+
+Run:
+```powershell
+Copy-Item .env.example .env
+```
+(`.env.example` is created in Task 1 — if doing Task 0 first, create `.env` directly with the two `IO_*` URLs from the Testing Setup section below.)
+
+- [ ] **Step 8: Create `scripts/check-env.ps1`**
+
+```powershell
+$ErrorActionPreference = "Stop"
+$ok = $true
+
+function Check($name, $script) {
+  try { & $script; Write-Host "OK   $name" -ForegroundColor Green }
+  catch { Write-Host "FAIL $name -- $_" -ForegroundColor Red; $script:ok = $false }
+}
+
+Check "uv on PATH"            { uv --version | Out-Null }
+Check "Ollama reachable"      { (Invoke-WebRequest http://localhost:11434/api/version -UseBasicParsing).StatusCode -eq 200 | Out-Null }
+Check "model llama3.2:3b"     { if (-not (ollama list | Select-String "llama3.2:3b")) { throw "not pulled" } }
+Check "model nomic-embed-text" { if (-not (ollama list | Select-String "nomic-embed-text")) { throw "not pulled" } }
+Check "Postgres io reachable" { docker compose exec -T db psql -U io -d io -c "SELECT 1" | Out-Null }
+Check "Postgres io_test"      { docker compose exec -T db psql -U io -d io_test -c "SELECT 1" | Out-Null }
+Check "pgvector in io"        { if (-not (docker compose exec -T db psql -U io -d io -c "\dx" | Select-String "vector")) { throw "extension missing" } }
+Check "pgvector in io_test"   { if (-not (docker compose exec -T db psql -U io -d io_test -c "\dx" | Select-String "vector")) { throw "extension missing" } }
+
+if (-not $ok) { exit 1 }
+Write-Host "`nEnvironment ready." -ForegroundColor Green
+```
+
+- [ ] **Step 9: Run the check**
+
+Run: `pwsh scripts/check-env.ps1`
+Expected: every line `OK`, final "Environment ready."
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add docker-compose.yml scripts/
+git commit -m "chore: local environment setup (Postgres+pgvector via Docker, Ollama, uv)"
 ```
 
 ---
@@ -2183,6 +2311,7 @@ git commit -m "test: end-to-end Arcadian store scenario and local-first socket g
 ## Self-Review
 
 **Spec coverage (Plan 1 scope = spec stages 1–8):**
+- Environment setup (user asked for it explicitly) → Task 0.
 - Stage 1 scaffold → Task 1. Stage 1 `.claude` → Task 2.
 - Stage 2 DB + migration → Task 3.
 - Stage 3 backend abstraction → Tasks 4, 6, 7, 14; `embed()` → Task 5.
