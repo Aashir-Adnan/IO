@@ -110,18 +110,20 @@ def persist_store(
             gate_reasons=gate_reasons,
         )
 
-    # 4. Write pass.
+    # 4. Write pass — inside a SAVEPOINT so a failure rolls back only the
+    #    write-pass rows, leaving the already-flushed utterance row intact.
     try:
-        return _write(
-            session,
-            embedder,
-            resolver,
-            extraction,
-            now,
-            confirmed,
-            utterance_id,
-            outcomes,
-        )
+        with session.begin_nested():
+            return _write(
+                session,
+                embedder,
+                resolver,
+                extraction,
+                now,
+                confirmed,
+                utterance_id,
+                outcomes,
+            )
     except PersistError:
         raise
     except Exception as exc:  # noqa: BLE001

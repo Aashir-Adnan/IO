@@ -1,7 +1,9 @@
 import datetime as dt
 
+import pytest
+
 from tests.conftest import requires_db
-from io_assistant.persist.writer import persist_store
+from io_assistant.persist.writer import persist_store, PersistError
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.models_domain import (
     ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord, ExtractedOccasion)
@@ -105,6 +107,37 @@ def test_ambiguous_entity_gates(db, config):
         extraction=ext, now=NOW, confidence_gate=0.6)
     assert out.gated and "ambiguous" in " ".join(out.gate_reasons).lower()
     assert db.query(m.Record).count() == 0
+
+
+class FailingEmbedder:
+    """Succeeds on the first embed_one call, raises on the second."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def embed_one(self, t):
+        self.calls += 1
+        if self.calls >= 2:
+            raise RuntimeError("boom")
+        return [0.0] * 768
+
+    def embed(self, ts):
+        return [self.embed_one(t) for t in ts]
+
+
+@requires_db
+def test_write_failure_keeps_only_utterance_and_raises(db, config):
+    text = "I went out with Nafay to eat at Arcadian for his and Eelian's birthday"
+    res = EntityResolver(db, StubEmbedder(), config.resolver)
+    with pytest.raises(PersistError):
+        persist_store(db, FailingEmbedder(), res,
+            utterance_text=text, source="text", captured_at=NOW,
+            extraction=_arcadian(), now=NOW,
+            confidence_gate=config.resolver.confidence_gate_threshold)
+    assert db.query(m.Record).count() == 0
+    assert db.query(m.Person).filter(
+        m.Person.canonical_name.in_(["Nafay", "Eelian"])).count() == 0
+    assert db.query(m.Utterance).filter_by(text=text).count() == 1
 
 
 @requires_db
