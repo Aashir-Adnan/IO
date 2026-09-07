@@ -1,0 +1,38 @@
+[
+  {
+    "utterance": "I had lunch with Ali at noon",
+    "intent": "store"
+  },
+  {
+    "utterance": "Went to the gym for 1 hour this morning",
+    "intent": "store"
+  },
+  {
+    "utterance": "Had a meeting with the team at 2 PM",
+    "intent": "store"
+  },
+  {
+    "utterance": "What did I do yesterday?",
+    "intent": "query"
+  },
+  {
+    "utterance": "Show me my activities from last week",
+    "intent": "query"
+  },
+  {
+    "utterance": "When did I last go to the gym?",
+    "intent": "query"
+  },
+  {
+    "utterance": "Hello there",
+    "intent": "unknown"
+  },
+  {
+    "utterance": "What's the weather like?",
+    "intent": "unknown"
+  },
+  {
+    "utterance": "Tell me a joke",
+    "intent": "unknown"
+  }
+]
