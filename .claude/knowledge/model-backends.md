@@ -43,3 +43,19 @@ datastore.
 other work → `anthropic` (only Whisper stays local; STT can be disabled to go
 fully thin). Absolute offline requirement → stay `local`, accept the quality
 ceiling.
+
+**Prompting small local models (learned 2026-09-07, llama3.2:3b)** — a 3B model
+in Ollama `format: json` mode is brittle about prompt shape:
+- Do NOT put `ExtractionResult.model_json_schema()` in the prompt — the verbose
+  `$defs` dump makes it echo the schema back and extract nothing. Use the
+  compact hand-written `SCHEMA_JSON` hint in `io_assistant/extract/schema.py`.
+- Do NOT format few-shot examples as fenced ```json blocks — it parrots every
+  example verbatim. Use plain `INPUT: …\nOUTPUT: {compact json}` pairs
+  (`_EXAMPLES` in `schema.py`).
+- Keep an explicit "describe only this sentence, never copy an example" line in
+  both `prompts/extract.txt` and `local.py`'s extract system prompt.
+- Real-world accuracy on the fixture set is ~80–90% run-to-run, so
+  `tests/test_extractor.py::test_extractor_against_fixtures` asserts a pass
+  **rate** (≥ 0.75), not every case. If that drops, the light profile has
+  regressed — bump to `quality`/`hybrid`.
+Claude (the `anthropic` backend) handles either prompt shape fine.
