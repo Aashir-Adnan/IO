@@ -41,13 +41,13 @@ def test_empty_utterance_is_unknown_without_model_call():
 
 
 @pytest.mark.ollama
+@pytest.mark.skipif(os.environ.get("IO_OLLAMA_TESTS") != "1", reason="opt-in")
 def test_router_with_local_backend(config):
     """Test Router with LocalBackend on real utterances.
 
     Asserts >=80% intent match on utterances_route.json fixture.
     Skipped by default unless IO_OLLAMA_TESTS=1.
     """
-    pytest.skip("Ollama model not available" if os.environ.get("IO_OLLAMA_TESTS") != "1" else "")
 
     # Load fixture
     fixture_path = Path(__file__).parent / "fixtures" / "utterances_route.json"
