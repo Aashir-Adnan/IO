@@ -1,0 +1,14 @@
+# SDD scratch
+/.superpowers/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+
+# Docker volumes handled by compose; nothing to ignore here
