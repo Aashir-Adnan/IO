@@ -24,6 +24,11 @@
   exceptions and continue instead of dying; persist `stripped` not raw `line`
   into `Utterance.text` (cli.py); rename `_make_session_factory` (returns a
   tuple); optionally cache the Orchestrator across repl lines.
+- Router quality on light profile: llama3.2:3b intent classification runs ~78%
+  on the 9-item `utterances_route.json` fixture (opt-in test threshold lowered
+  0.8→0.7). Improve `prompts/route.txt` (few-shot examples, tighter definitions),
+  grow the fixture, and/or route on `quality`/cloud even in hybrid. This matters
+  for hybrid users (routing stays local).
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
