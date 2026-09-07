@@ -149,28 +149,50 @@ as a common `Utterance` object: `{ text, source, captured_at, transcription_conf
   `aliases text[]`, `embedding vector`, timestamps.
 - **`items`** — `id`, `name`, `category` (food, object, media, …),
   `aliases text[]`, `embedding vector`, timestamps.
-- **`events`** — `id`, `description`, `occurred_at timestamptz`,
-  `attributes jsonb` (freeform extracted detail), `source_utterance_id fk`,
-  `embedding vector`, `created_at`.
-- **`tasks`** — `id`, `title`, `source` (`family` | `job` | `chore` | `self`),
-  `assigned_by_person_id fk null`, `due_at timestamptz null`,
-  `status` (`open` | `done` | `dropped`), `recurrence_rule text null` (iCal RRULE),
-  `attributes jsonb`, `source_utterance_id fk`, `embedding vector`, timestamps.
 - **`occasions`** — `id`, `name` (e.g. "Eelian's birthday"), `date`,
   `recurrence_rule text null`, `embedding vector`, timestamps.
+- **`records`** — the single open-ended table for everything that happened, is to
+  be done, or is a note about some part of the user's life. New life domains
+  ("job", "gym", "health") never need a new table — they become new `kind` /
+  `domain` string values, chosen by the model, stored as data.
+  - `id`
+  - `kind text` — a normalized slug the model assigns (lowercase snake_case),
+    e.g. `event`, `task`, `chore`, `job_task`, `gym_session`, `health_note`,
+    `expense`. `event`, `task`, and `chore` are well-known kinds the pipeline
+    treats specially (see below); any other value is free-form and fine.
+  - `domain text null` — a coarse bucket the model assigns from a small open set:
+    `social`, `job`, `home`, `health`, `finance`, `learning`, `errand`, `other`.
+    Drives questions like "what work do I have" (`domain = 'job'`).
+  - `title text` — short one-liner.
+  - `body text null` — longer free description when the utterance has one.
+  - `occurred_at timestamptz null` — when it happened (past-tense records).
+  - `due_at timestamptz null` — when it's due (actionable records).
+  - `status text null` — `open` | `done` | `dropped` for actionable records;
+    `null` for pure events / notes.
+  - `recurrence_rule text null` — iCal RRULE for recurring records.
+  - `assigned_by_person_id fk null` — who assigned it, if anyone.
+  - `attributes jsonb` — any other structured detail the model extracted.
+  - `source_utterance_id fk`, `embedding vector`, `created_at`, `updated_at`.
+
+**Well-known kinds:** `kind = 'event'` → `occurred_at` set, `status` null;
+`kind IN ('task','chore')` → `due_at`/`status` used, `chore` normally carries a
+`recurrence_rule`. The router/extractor and query planner special-case these
+three; every other `kind` is retrieved generically by `kind` / `domain` / time
+window / semantic similarity.
 
 ### Link tables
 
-`event_people`, `event_places`, `event_items`, `event_occasions`,
-`occasion_people`. Each is `(event_id|occasion_id, entity_id, role text null)`.
+`record_people`, `record_places`, `record_items`, `record_occasions`,
+`occasion_people`. Each is `(record_id|occasion_id, entity_id, role text null)`.
 
 ### Indexing
 
-- Every text-bearing row (`people`, `places`, `items`, `events`, `tasks`,
-  `occasions`) has an `embedding vector` column with an **HNSW** index for
-  approximate nearest-neighbour search.
+- Every text-bearing row (`people`, `places`, `items`, `occasions`, `records`)
+  has an `embedding vector` column with an **HNSW** index for approximate
+  nearest-neighbour search.
 - B-tree indexes on every foreign key and every timestamp column
-  (`occurred_at`, `due_at`, `captured_at`, `date`).
+  (`records.occurred_at`, `records.due_at`, `utterances.captured_at`,
+  `occasions.date`), plus b-tree on `records.kind` and `records.domain`.
 - GIN index on `aliases` arrays.
 
 ### Migrations
@@ -194,8 +216,15 @@ Runs when Route returns `STORE`.
 
 - Prompt: system schema description + few-shot examples + the utterance.
 - Output: JSON only — arrays of `people`, `places`, `items`, `occasions`, and one
-  or more `events` and/or `tasks`. Each record carries only the fields the model
-  can fill plus a `confidence` float in `[0, 1]`.
+  or more `records`. Each `record` carries `kind` (a normalized slug the model
+  picks — `event` / `task` / `chore` for the well-known cases, otherwise a
+  domain-appropriate slug like `job_task` or `gym_session`), an optional `domain`
+  bucket, `title`, and only the other fields the model can fill (`body`,
+  `when_phrase`, `due_phrase`, `recurrence_phrase`, `status`, `assigned_by`,
+  `people`/`places`/`items`/`occasions`, `attributes`), plus a `confidence` float
+  in `[0, 1]`. The extractor normalizes `kind`/`domain` (lowercase, snake_case,
+  domain clamped to the known set with unknown → `other`) — the model proposes,
+  deterministic code sanitizes.
 - Validation: parsed into Pydantic models. On failure, one retry with a
   "return valid JSON matching the schema" nudge. Second failure → route becomes
   `UNKNOWN`, utterance logged with an `extraction_failed` marker for later review.
@@ -236,15 +265,19 @@ One transaction:
 
 1. Insert new entities; update existing entities' `aliases`/`notes` if the
    utterance adds detail.
-2. Insert the `event`(s) / `task`(s).
-3. Insert link rows.
-4. Compute and store embeddings for every new/updated text row.
+2. Insert the `record`(s), with `occurred_at` from `when_phrase`, `due_at` from
+   `due_phrase`, `recurrence_rule` from `recurrence_phrase`, `assigned_by_person_id`
+   resolved from `assigned_by`.
+3. Insert link rows (`record_people` / `record_places` / `record_items` /
+   `record_occasions`).
+4. Compute and store embeddings for every new/updated text row (record embedding
+   is built from `title` + `body`).
 5. Stamp `source_utterance_id` everywhere; set `utterances.resolved_intent = 'store'`.
 
 ### 4.6 Recurring items
 
-"I take the trash out every Monday" → a `task` with `recurrence_rule` set and
-`due_at` null. Never expanded at store time.
+"I take the trash out every Monday" → a `record` with `kind = 'chore'`,
+`recurrence_rule` set, `due_at` null. Never expanded at store time.
 
 ---
 
@@ -260,10 +293,11 @@ The model converts the question into a `QueryPlan`:
 QueryPlan = {
   subqueries: [
     {
-      target_type: "event" | "task" | "person" | "place" | "occasion",
-      entities: [ "<name>", ... ],          # referenced entities, unresolved
+      target_type: "record" | "person" | "place" | "occasion",
+      kind_filter: [ "<kind>", ... ] | null,          # e.g. ["task","chore"] or ["gym_session"]
+      domain_filter: [ "job", "home", ... ] | null,
+      entities: [ "<name>", ... ],                      # referenced entities, unresolved
       time_window: { start: <ISO|null>, end: <ISO|null> } | null,
-      source_filter: [ "family", "job", "chore", "self" ] | null,
       status_filter: [ "open", "done", "dropped" ] | null,
       semantic_hint: "<short phrase to embed>" | null,
       aggregation: "list" | "count" | "latest" | null
@@ -273,13 +307,17 @@ QueryPlan = {
 }
 ```
 
-- "What work do I have today" → subqueries over `tasks`:
-  one with `source_filter=["family","job"]`, `status_filter=["open"]`,
-  `time_window` = today-or-overdue; plus recurring `chore` tasks whose RRULE
-  fires today (handled in 5.4).
-- A simple question ("where did I eat yesterday") produces a single subquery and
-  skips planning overhead where possible.
-- Time windows in the plan are grounded by app code, not the model.
+- "What work do I have today" → subqueries over `records`:
+  one with `domain_filter=["job"]`, `status_filter=["open"]`,
+  `time_window` = today-or-overdue; plus `kind_filter=["chore"]` records whose
+  RRULE fires today (handled in 5.4).
+- "How's my gym been going" → `kind_filter=["gym_session"]` (or
+  `domain_filter=["health"]` if the model didn't settle on a kind), recent
+  time window, `semantic_hint="gym workout exercise"`.
+- A simple question ("where did I eat yesterday") produces a single subquery
+  (`kind_filter=["event"]`) and skips planning overhead where possible.
+- Time windows and the `kind`/`domain` vocabulary in the plan are grounded /
+  clamped by app code, not trusted raw from the model.
 
 ### 5.2 Retrieve — both paths, every subquery
 
@@ -305,8 +343,9 @@ Cap at a configurable top-N (default 20) to bound the Respond model's context.
 
 ### 5.4 Expand recurrences
 
-For any `task`/`occasion` with a `recurrence_rule` in the result window, expand
-the RRULE to concrete instances within the window (using `dateutil.rrule`).
+For any `record` (chore or otherwise) or `occasion` with a `recurrence_rule` in
+the result window, expand the RRULE to concrete instances within the window
+(using `dateutil.rrule`).
 
 ### 5.5 Phrase
 
@@ -460,12 +499,13 @@ every stage.
 - **Ranking & recurrence:** deterministic unit tests over synthetic result sets.
 - **End-to-end scenarios:**
   1. Store "I went out with Nafay to eat at Arcadian for his and Eelian's
-     birthday" → assert an `event` with `occurred_at` today, linked people
-     `Nafay` + `Eelian`, place `Arcadian`, occasion `birthday`.
+     birthday" → assert a `record` with `kind = 'event'`, `occurred_at` today,
+     linked people `Nafay` + `Eelian`, place `Arcadian`, occasion `birthday`.
   2. A week later, "Where have I hung out with Nafay in the past week" → the
-     stored event is in the answer.
-  3. Store three tasks from `family`, `job`, and `chore` sources → "What work do
-     I have today" returns the right subset, including a chore whose RRULE fires
+     stored record is in the answer.
+  3. Store three actionable records with `domain` `home`, `job`, and a `chore`
+     kind → "What work do I have today" returns the right subset, including a
+     chore whose RRULE fires
      today.
 - **Test database:** a disposable local PostgreSQL (Docker or a dedicated local
   cluster); the DB is never mocked.
@@ -546,7 +586,7 @@ Each stage is independently testable and leaves the system in a working state.
    a fake backend satisfies the interface; `LocalBackend` round-trips a trivial
    prompt against Ollama; `embed()` returns the configured dimension.
 4. **Persistence layer** — transactional writes + embedding generation via
-   `embed()`. Test: write the Arcadian event by hand, read it back with links.
+   `embed()`. Test: write the Arcadian record by hand, read it back with links.
 5. **Resolver** — exact/fuzzy/vector/new + confirmation gate. Test: seeded-entity
    unit matrix.
 6. **Extractor** — schema, prompts, Pydantic validation, retry; calls
