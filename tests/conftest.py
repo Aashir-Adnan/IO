@@ -1,5 +1,12 @@
+import os
+
 import pytest
+
 from io_assistant.config import Config, BackendConfig, ResolverConfig
+from io_assistant.db.base import make_engine, make_session_factory, Base
+from io_assistant.db import models  # noqa: F401 — register mappers
+from sqlalchemy import text
+
 
 @pytest.fixture
 def config() -> Config:
@@ -18,3 +25,35 @@ def config() -> Config:
             confidence_gate_threshold=0.6,
         ),
     )
+
+
+TEST_DB_URL = os.environ.get("IO_TEST_DATABASE_URL")
+requires_db = pytest.mark.skipif(not TEST_DB_URL, reason="IO_TEST_DATABASE_URL not set")
+
+
+@pytest.fixture(scope="session")
+def engine():
+    if not TEST_DB_URL:
+        pytest.skip("IO_TEST_DATABASE_URL not set")
+    eng = make_engine(TEST_DB_URL)
+    with eng.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    Base.metadata.drop_all(eng)
+    Base.metadata.create_all(eng)
+    yield eng
+    Base.metadata.drop_all(eng)
+
+
+@pytest.fixture
+def db(engine):
+    """Function-scoped session wrapped in a rolled-back transaction."""
+    connection = engine.connect()
+    trans = connection.begin()
+    Session = make_session_factory(connection)
+    session = Session()
+    try:
+        yield session
+    finally:
+        session.close()
+        trans.rollback()
+        connection.close()
