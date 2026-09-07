@@ -77,7 +77,10 @@ class LocalBackend:
             utterance=utterance,
         )
         out = self._chat(
-            "You extract structured data. Output JSON only.", prompt, json_mode=True
+            "You are an information-extraction function. For the single INPUT "
+            "sentence, output ONE JSON object about THAT sentence only. Never "
+            "copy the examples. Output JSON only.",
+            prompt, json_mode=True
         )
         try:
             return ExtractionResult.model_validate_json(out)

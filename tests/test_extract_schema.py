@@ -12,11 +12,15 @@ def test_schema_hint_names_the_top_level_arrays():
 
 
 def test_fewshot_examples_parse_as_extraction_results():
-    # every ```json block in FEWSHOT must validate
-    blocks = [b.split("```")[0] for b in FEWSHOT.split("```json")[1:]]
-    assert blocks, "no examples found"
-    for b in blocks:
-        ExtractionResult.model_validate_json(b)
+    # every "OUTPUT: {json}" line in FEWSHOT must validate as an ExtractionResult
+    outputs = [
+        line[len("OUTPUT:"):].strip()
+        for line in FEWSHOT.splitlines()
+        if line.startswith("OUTPUT:")
+    ]
+    assert len(outputs) >= 3, "no examples found"
+    for block in outputs:
+        ExtractionResult.model_validate_json(block)
 
 
 def test_fixtures_file_wellformed():

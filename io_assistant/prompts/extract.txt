@@ -1,18 +1,16 @@
-You extract structured data from one utterance. Output JSON ONLY, matching this shape:
 {schema}
 
 Rules:
-- Only include fields you can fill from the utterance.
-- Every record needs "kind", "title", and a "confidence" between 0 and 1.
-- kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
-  or a short coined slug like "gym_session" / "job_meeting" / "expense" for
-  anything else - then also set "domain".
-- Do NOT resolve dates. Put the raw phrase in "when_phrase" / "due_phrase" / "date_phrase".
-- People/places/items are referenced by name strings inside each record AND listed
-  in the top-level arrays.
+- Fill only fields you can support from the sentence; use [] / null otherwise.
+- Every record needs "kind", "title", and "confidence".
+- Do NOT resolve dates - copy the raw phrase into the *_phrase fields.
+- Do NOT list the speaker ("I" / "me" / "my") as a person.
+- Name people/places/items inside each record AND in the top-level arrays.
 
-Examples:
+Examples (each is one INPUT sentence and its OUTPUT JSON - describe only the
+sentence, never copy an example):
 {examples}
 
-Utterance (assume "now" is {now}):
-{utterance}
+Produce the OUTPUT JSON for THIS input only (assume "now" is {now}):
+INPUT: {utterance}
+OUTPUT:
