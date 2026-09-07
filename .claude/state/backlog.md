@@ -14,6 +14,12 @@
   names only when they also appear in the top-level people/places/items lists
   (silently dropped otherwise); unparseable `recurrence_phrase` persists
   silently (not gated); `persist_store` `items` link path has no test.
+- Date grounding vs 3B model: `ground()` returns ok=False for absolute/ISO dates,
+  and llama3.2:3b sometimes emits an ISO datetime as `when_phrase` (despite the
+  prompt saying "copy the raw phrase") → every such record needlessly gates.
+  Fix: (a) `ground()` should parse ISO-8601 and common absolute date strings via
+  `dateutil.parser` and return ok=True; (b) tighten the extract prompt /
+  post-process to strip model-invented ISO timestamps back toward "today".
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
