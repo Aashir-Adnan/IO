@@ -1546,8 +1546,13 @@ git commit -m "feat: AnthropicBackend"
 **Interfaces:**
 - Consumes: the pydantic models from `models_domain` (Task 4).
 - Produces:
-  - `io_assistant.extract.schema.SCHEMA_JSON: str` — `ExtractionResult.model_json_schema()`
-    dumped to a compact JSON string.
+  - `io_assistant.extract.schema.SCHEMA_JSON: str` — a **compact, hand-written**
+    field-shape description (NOT `ExtractionResult.model_json_schema()` — the
+    verbose `$defs` dump makes small local models echo the schema back instead of
+    extracting; verified 2026-09-07 with llama3.2:3b, and the compact form
+    extracts all fixture cases correctly). Name kept for import stability even
+    though the content is no longer JSON. One short line per top-level array
+    naming its object's keys, plus the `kind`/`domain` vocabulary.
   - `io_assistant.extract.schema.FEWSHOT: str` — 2–3 worked examples
     (utterance → JSON), including the Arcadian sentence.
   - `tests/fixtures/utterances_store.json` — a list of
@@ -1557,14 +1562,14 @@ git commit -m "feat: AnthropicBackend"
 - [ ] **Step 1: Write the failing test** — `tests/test_extract_schema.py`
 
 ```python
-import json
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
 from io_assistant.models_domain import ExtractionResult
 
-def test_schema_is_valid_json_and_mentions_records():
-    obj = json.loads(SCHEMA_JSON)
-    assert "properties" in obj
-    assert "records" in json.dumps(obj)
+def test_schema_hint_names_the_top_level_arrays():
+    for key in ("people", "places", "items", "occasions", "records"):
+        assert key in SCHEMA_JSON
+    assert "kind" in SCHEMA_JSON and "domain" in SCHEMA_JSON
+    assert "confidence" in SCHEMA_JSON
 
 def test_fewshot_examples_parse_as_extraction_results():
     # every ```json block in FEWSHOT must validate
@@ -1586,10 +1591,26 @@ def test_fixtures_file_wellformed():
 
 ```python
 from __future__ import annotations
-import json
-from io_assistant.models_domain import ExtractionResult
 
-SCHEMA_JSON = json.dumps(ExtractionResult.model_json_schema(), separators=(",", ":"))
+# Compact, hand-written shape hint. Do NOT use ExtractionResult.model_json_schema()
+# here — the verbose $defs dump makes small local models (llama3.2:3b) echo the
+# schema back instead of extracting. This compact form extracts every fixture
+# case correctly (verified 2026-09-07). Name kept as SCHEMA_JSON for import
+# stability in local.py / anthropic_backend.py.
+SCHEMA_JSON = '''Return a JSON object with EXACTLY these keys, each an array (use [] when empty):
+people: [{"name": str, "aliases": [str], "confidence": 0..1}]
+places: [{"name": str, "aliases": [str], "confidence": 0..1}]
+items:  [{"name": str, "aliases": [str], "confidence": 0..1}]
+occasions: [{"name": str, "date_phrase": str|null, "confidence": 0..1}]
+records: [{"kind": str, "domain": str|null, "title": str, "body": str|null,
+           "when_phrase": str|null, "due_phrase": str|null, "recurrence_phrase": str|null,
+           "status": "open"|"done"|"dropped"|null, "assigned_by": str|null,
+           "people": [str], "places": [str], "items": [str], "occasions": [str],
+           "attributes": {}, "confidence": 0..1}]
+kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
+      or a short coined slug like "gym_session" / "job_meeting" / "expense".
+domain: one of social, job, home, health, finance, learning, errand, other.
+Do NOT resolve dates — copy the raw phrase into *_phrase fields.'''
 
 FEWSHOT = '''
 Every `record` needs `kind` and `title`. Use kind "event" for something that
