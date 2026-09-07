@@ -1,6 +1,3 @@
 # Current session
 
-**Working on:** Plan 1 — core storage pipeline
-**Plan:** docs/superpowers/plans/2026-09-07-io-phase-1-core-storage.md
-**Knowledge in play:** architecture.md, data-model.md, extraction.md, model-backends.md
-**Skills in play:** run-local.md
+Plan 1 complete. Next: Plan 2 (query pipeline). See docs/superpowers/plans/ for the Plan 1 doc and backlog.md for follow-ups.
