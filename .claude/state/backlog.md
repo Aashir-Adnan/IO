@@ -8,7 +8,9 @@
 - Deferred minors from Plan 1 review (see ledger): unused `field_validator`
   import in config.py; `aliases` columns NOT NULL without server_default;
   redundant PK-leading-column indexes on link tables; malformed-Ollama-JSON
-  (KeyError) not wrapped in LocalBackendError.
+  (KeyError) not wrapped in LocalBackendError; `EntityResolver.resolve()` ignores
+  the caller-supplied `aliases` arg for matching and fuzzy step skips stored
+  aliases.
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
