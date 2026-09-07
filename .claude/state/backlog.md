@@ -10,7 +10,10 @@
   redundant PK-leading-column indexes on link tables; malformed-Ollama-JSON
   (KeyError) not wrapped in LocalBackendError; `EntityResolver.resolve()` ignores
   the caller-supplied `aliases` arg for matching and fuzzy step skips stored
-  aliases.
+  aliases; `persist_store` resolves `assigned_by` / record-referenced entity
+  names only when they also appear in the top-level people/places/items lists
+  (silently dropped otherwise); unparseable `recurrence_phrase` persists
+  silently (not gated); `persist_store` `items` link path has no test.
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
