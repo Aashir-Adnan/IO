@@ -922,6 +922,10 @@ git commit -m "feat: database ORM models and initial migration"
     - `extract(self, utterance: str, now: datetime) -> ExtractionResult`
     - `plan(self, question: str, now: datetime) -> dict`  *(QueryPlan lands in Plan 2; typed as `dict` here)*
     - `phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str`
+  - `BackendParseError(Exception)` — ALSO defined in `io_assistant/backend/interface.py`
+    (single shared class). `local.py` and `anthropic_backend.py` re-export it
+    (`from .interface import BackendParseError`) so existing test imports resolve.
+    `Extractor` (Task 9) catches this one class.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_backend_interface.py`
 
@@ -957,6 +961,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape
+
+class BackendParseError(Exception):
+    """Raised by any backend when the model's extract output can't be parsed
+    into an ExtractionResult. Single shared class; re-exported by local.py and
+    anthropic_backend.py."""
 
 @runtime_checkable
 class Backend(Protocol):
@@ -1257,8 +1266,9 @@ from io_assistant.config import Config
 from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT   # Task 8 provides these
 
+from io_assistant.backend.interface import BackendParseError  # single shared class (see below)
+
 class LocalBackendError(Exception): pass
-class BackendParseError(Exception): pass
 
 _INTENTS = {"STORE": "store", "QUERY": "query", "UNKNOWN": "unknown"}
 
@@ -1403,9 +1413,9 @@ from importlib import resources
 from io_assistant.config import Config
 from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
+from io_assistant.backend.interface import BackendParseError  # single shared class
 
 class AnthropicBackendError(Exception): pass
-class BackendParseError(Exception): pass
 
 _INTENTS = {"STORE": "store", "QUERY": "query", "UNKNOWN": "unknown"}
 
@@ -1596,14 +1606,9 @@ git commit -m "feat: extraction schema and few-shot examples"
     calls `backend.extract`; on `BackendParseError` retries once with the same
     inputs; returns `None` after a second failure (caller marks the utterance
     `extraction_failed`).
-  - Import the two `BackendParseError` classes and catch both (they're distinct
-    classes in `local` and `anthropic_backend` — Task 10's factory will not
-    unify them, so `extractor.py` defines
-    `_PARSE_ERRORS = (LocalParseError, AnthropicParseError)` and catches that
-    tuple). *Refactor note:* if the executor prefers, hoist a single
-    `BackendParseError` into `io_assistant/backend/interface.py` and have both
-    backends raise that — update Tasks 6 and 7 imports. Either is acceptable;
-    pick one and be consistent.
+  - `BackendParseError` is the single shared class from
+    `io_assistant/backend/interface.py` (defined in Task 4). `extractor.py`
+    imports it from there and catches that one class.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_extractor.py`
 
@@ -1648,12 +1653,8 @@ def test_returns_none_after_two_failures():
 ```python
 from __future__ import annotations
 from datetime import datetime
-from io_assistant.backend.interface import Backend
+from io_assistant.backend.interface import Backend, BackendParseError
 from io_assistant.models_domain import ExtractionResult
-from io_assistant.backend.local import BackendParseError as LocalParseError
-from io_assistant.backend.anthropic_backend import BackendParseError as AnthropicParseError
-
-_PARSE_ERRORS = (LocalParseError, AnthropicParseError)
 
 class Extractor:
     def __init__(self, backend: Backend):
@@ -1663,7 +1664,7 @@ class Extractor:
         for attempt in (1, 2):
             try:
                 return self._backend.extract(utterance, now)
-            except _PARSE_ERRORS:
+            except BackendParseError:
                 if attempt == 2:
                     return None
         return None
@@ -2336,9 +2337,10 @@ load-bearing for later tasks. Everything code-bearing has real code.
 **Type consistency:** `ExtractionResult` field names are fixed in Task 4 and used
 identically in Tasks 6–9, 13, 15, 16. `ResolveOutcome` / `PersistResult` /
 `HandleResult` dataclass field names are defined once (Tasks 12, 13, 15) and
-matched in tests. `BackendParseError` appears in two modules (Tasks 6, 7); Task 9
-explicitly addresses the duplication and offers a hoist — the executor must pick
-one option and update imports consistently.
+matched in tests. `BackendParseError` is a single class in
+`io_assistant/backend/interface.py` (Task 4), re-exported by `local.py` and
+`anthropic_backend.py` so `from io_assistant.backend.local import BackendParseError`
+still resolves in tests; `Extractor` catches the one class.
 
 **Known ordering wrinkle:** Task 6 (`LocalBackend`) imports from
 `io_assistant.extract.schema`, created in Task 8. Task 6 Step 5 calls for a stub
