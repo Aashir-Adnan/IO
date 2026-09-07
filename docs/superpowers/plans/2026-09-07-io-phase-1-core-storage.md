@@ -1545,14 +1545,21 @@ git commit -m "feat: AnthropicBackend"
 
 **Interfaces:**
 - Consumes: the pydantic models from `models_domain` (Task 4).
+> **Implemented + tuned beyond this text — see commits `6519428`, `3025a10`,
+> `eb09ff1` and ledger rulings R6/R6b.** The code below is the original design;
+> the shipped version differs where the light-profile 3B model forced prompt
+> changes: (a) `SCHEMA_JSON` is a compact hand-written hint, not
+> `model_json_schema()` (the `$defs` dump made the model echo the schema);
+> (b) `FEWSHOT` is plain `INPUT:/OUTPUT:` pairs built from an `_EXAMPLES` list,
+> not fenced ```json blocks (fences made the model parrot every example);
+> (c) `extract.txt` and `local.py`'s extract system prompt carry anti-parrot /
+> "don't list the speaker" instructions; (d) `test_extractor_against_fixtures`
+> asserts a **pass-rate ≥ 0.75**, not every case (opt-in quality signal, not a
+> gate). Verified: real llama3.2:3b pass rate 5/6 = 83%.
+
 - Produces:
   - `io_assistant.extract.schema.SCHEMA_JSON: str` — a **compact, hand-written**
-    field-shape description (NOT `ExtractionResult.model_json_schema()` — the
-    verbose `$defs` dump makes small local models echo the schema back instead of
-    extracting; verified 2026-09-07 with llama3.2:3b, and the compact form
-    extracts all fixture cases correctly). Name kept for import stability even
-    though the content is no longer JSON. One short line per top-level array
-    naming its object's keys, plus the `kind`/`domain` vocabulary.
+    field-shape description (see the note above and the shipped file).
   - `io_assistant.extract.schema.FEWSHOT: str` — 2–3 worked examples
     (utterance → JSON), including the Arcadian sentence.
   - `tests/fixtures/utterances_store.json` — a list of
