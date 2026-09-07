@@ -36,7 +36,7 @@ io_assistant/
   db/
     __init__.py
     base.py              # SQLAlchemy engine/session factory
-    models.py            # ORM: Utterance, Person, Place, Item, Event, Task, Occasion, link tables
+    models.py            # ORM: Utterance, Person, Place, Item, Occasion, Record, link tables
     migrations/          # Alembic env + versions
   backend/
     __init__.py
@@ -62,7 +62,7 @@ io_assistant/
     dates.py             # ground_dates(): relative time expressions -> datetimes
   persist/
     __init__.py
-    writer.py            # persist_store(): one transaction, entities + event/task + links + embeddings
+    writer.py            # persist_store(): one transaction, entities + records + links + embeddings
   orchestrator.py        # handle_utterance(): Route -> Extract -> Resolve -> Persist
 config.toml
 pyproject.toml
@@ -620,7 +620,9 @@ sluggish during a call.
 Create each of these with content summarized from the matching spec section
 (1–3 short paragraphs each, enough that a fresh session doesn't re-derive it):
 - `architecture.md` — from spec §2 (layer table, data flow, the LLM boundary).
-- `data-model.md` — from spec §3 (tables, link tables, indexing, embeddings).
+- `data-model.md` — from spec §3 (entity tables `people`/`places`/`items`/
+  `occasions`; the open-ended `records` table with `kind`/`domain`; link tables;
+  indexing; embeddings; the "new domains = new `kind`, never a new table" rule).
 - `extraction.md` — from spec §4 (schema, resolver order, gate triggers, date grounding).
 - `query-pipeline.md` — from spec §5 (planner, hybrid retrieval, ranking) — mark "implemented in Plan 2".
 - `local-stack.md` — from spec §8 + §13.2 (Ollama/Whisper/Postgres setup, profile model names, 3060 6GB / 24GB notes).
@@ -720,8 +722,8 @@ git commit -m "docs: .claude memory scaffold and CLAUDE.md"
   - `io_assistant.db.base.SessionLocal` — a `sessionmaker`; `make_session_factory(engine)`.
   - `io_assistant.db.base.Base` — the declarative base (`Base.metadata` for tests).
   - ORM classes in `io_assistant.db.models`: `Utterance`, `Person`, `Place`, `Item`,
-    `Event`, `Task`, `Occasion`, `EventPerson`, `EventPlace`, `EventItem`,
-    `EventOccasion`, `OccasionPerson`.
+    `Occasion`, `Record`, `RecordPerson`, `RecordPlace`, `RecordItem`,
+    `RecordOccasion`, `OccasionPerson`.
   - Column contracts (later tasks depend on these names):
     - `Utterance(id: int pk, text: str, source: str, captured_at: datetime,
       transcription_confidence: float | None, resolved_intent: str | None,
@@ -730,14 +732,20 @@ git commit -m "docs: .claude memory scaffold and CLAUDE.md"
       embedding: Vector(768), created_at, updated_at)`.
     - `Place(id, name, type: str | None, aliases: list[str], embedding, created_at, updated_at)`.
     - `Item(id, name, category: str | None, aliases: list[str], embedding, created_at, updated_at)`.
-    - `Event(id, description: str, occurred_at: datetime, attributes: dict,
-      source_utterance_id: int fk, embedding, created_at)`.
-    - `Task(id, title: str, source: str, assigned_by_person_id: int | None fk,
-      due_at: datetime | None, status: str, recurrence_rule: str | None,
-      attributes: dict, source_utterance_id: int fk, embedding, created_at, updated_at)`.
     - `Occasion(id, name: str, date: date | None, recurrence_rule: str | None,
       embedding, created_at, updated_at)`.
-    - link rows: `EventPerson(event_id, person_id, role: str | None)` etc.
+    - `Record(id, kind: str, domain: str | None, title: str, body: str | None,
+      occurred_at: datetime | None, due_at: datetime | None, status: str | None,
+      recurrence_rule: str | None, assigned_by_person_id: int | None fk,
+      attributes: dict, source_utterance_id: int fk, embedding, created_at, updated_at)`
+      — the single open-ended table (spec §3). `kind` is a normalized slug
+      (`event`, `task`, `chore`, or anything the model coins like `gym_session`);
+      `domain` is one of `social|job|home|health|finance|learning|errand|other`
+      or NULL.
+    - link rows: `RecordPerson(record_id, person_id, role: str | None)`,
+      `RecordPlace(record_id, place_id, role)`, `RecordItem(record_id, item_id, role)`,
+      `RecordOccasion(record_id, occasion_id, role)`,
+      `OccasionPerson(occasion_id, person_id, role)`.
 
 - [ ] **Step 1: Implement `io_assistant/db/base.py`**
 
@@ -793,22 +801,43 @@ class Person(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 # Place, Item — same shape as Person with (name, type|category) instead of canonical_name.
-# Event, Task, Occasion, and link tables per the Interfaces block above.
+# Occasion — (name, date, recurrence_rule, embedding, timestamps).
+
+class Record(Base):
+    __tablename__ = "records"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occurred_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(12), nullable=True)  # open|done|dropped
+    recurrence_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_by_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("people.id", ondelete="SET NULL"), nullable=True)
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source_utterance_id: Mapped[int] = mapped_column(
+        ForeignKey("utterances.id", ondelete="CASCADE"), nullable=False)
+    embedding = mapped_column(Vector(EMBED_DIM), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 # Link tables use a composite PK, e.g.:
-class EventPerson(Base):
-    __tablename__ = "event_people"
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+class RecordPerson(Base):
+    __tablename__ = "record_people"
+    record_id: Mapped[int] = mapped_column(ForeignKey("records.id", ondelete="CASCADE"), primary_key=True)
     person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 ```
 
-Write out the full set of classes (Place, Item, Event, Task, Occasion,
-EventPlace, EventItem, EventOccasion, OccasionPerson) following the exact column
-contracts in the Interfaces block. Do not abbreviate in the real file.
+Write out the full set of classes (Place, Item, Occasion, Record, RecordPerson,
+RecordPlace, RecordItem, RecordOccasion, OccasionPerson) following the exact
+column contracts in the Interfaces block. Do not abbreviate in the real file.
 
 - [ ] **Step 3: Set up Alembic** — `alembic.ini` (script location `io_assistant/db/migrations`), `env.py` wiring `target_metadata = Base.metadata` and importing `io_assistant.db.models`, reading the URL from `IO_DATABASE_URL` env or `load_config().database_url`.
 
-- [ ] **Step 4: Write `0001_initial.py`** — creates `CREATE EXTENSION IF NOT EXISTS vector;` first, then all tables, then indexes: b-tree on every FK and on `utterances.captured_at`, `events.occurred_at`, `tasks.due_at`, `occasions.date`; GIN on `people.aliases`, `places.aliases`, `items.aliases`; HNSW on every `embedding` column, e.g.
+- [ ] **Step 4: Write `0001_initial.py`** — creates `CREATE EXTENSION IF NOT EXISTS vector;` first, then all tables, then indexes: b-tree on every FK and on `utterances.captured_at`, `records.occurred_at`, `records.due_at`, `records.kind`, `records.domain`, `occasions.date`; GIN on `people.aliases`, `places.aliases`, `items.aliases`; HNSW on every `embedding` column (`people`, `places`, `items`, `occasions`, `records`), e.g.
   `op.execute("CREATE INDEX ix_people_embedding ON people USING hnsw (embedding vector_cosine_ops)")`.
 
 - [ ] **Step 5: Add DB fixtures to `tests/conftest.py`**
@@ -858,22 +887,34 @@ from tests.conftest import requires_db
 from io_assistant.db import models as m
 
 @requires_db
-def test_insert_utterance_and_event_with_links(db):
+def test_insert_utterance_and_record_with_links(db):
     u = m.Utterance(text="dinner at Arcadian", source="text",
                     captured_at=dt.datetime.now(dt.timezone.utc))
     db.add(u); db.flush()
     p = m.Person(canonical_name="Nafay", aliases=["nafay"])
     place = m.Place(name="Arcadian", type="restaurant", aliases=[])
     db.add_all([p, place]); db.flush()
-    e = m.Event(description="dinner", occurred_at=dt.datetime.now(dt.timezone.utc),
-                attributes={"occasion": "birthday"}, source_utterance_id=u.id)
-    db.add(e); db.flush()
-    db.add(m.EventPerson(event_id=e.id, person_id=p.id))
-    db.add(m.EventPlace(event_id=e.id, place_id=place.id))
+    r = m.Record(kind="event", domain="social", title="dinner",
+                 occurred_at=dt.datetime.now(dt.timezone.utc),
+                 attributes={"occasion": "birthday"}, source_utterance_id=u.id)
+    db.add(r); db.flush()
+    db.add(m.RecordPerson(record_id=r.id, person_id=p.id))
+    db.add(m.RecordPlace(record_id=r.id, place_id=place.id))
     db.flush()
-    got = db.get(m.Event, e.id)
+    got = db.get(m.Record, r.id)
     assert got.attributes["occasion"] == "birthday"
-    assert db.query(m.EventPerson).filter_by(event_id=e.id).count() == 1
+    assert got.kind == "event"
+    assert db.query(m.RecordPerson).filter_by(record_id=r.id).count() == 1
+
+@requires_db
+def test_record_accepts_arbitrary_kind(db):
+    u = m.Utterance(text="gym leg day", source="text",
+                    captured_at=dt.datetime.now(dt.timezone.utc))
+    db.add(u); db.flush()
+    r = m.Record(kind="gym_session", domain="health", title="leg day",
+                 occurred_at=dt.datetime.now(dt.timezone.utc), source_utterance_id=u.id)
+    db.add(r); db.flush()
+    assert db.get(m.Record, r.id).kind == "gym_session"
 ```
 
 - [ ] **Step 7: Run migration + test**
@@ -907,16 +948,24 @@ git commit -m "feat: database ORM models and initial migration"
   - `ExtractedPerson`/`ExtractedPlace`/`ExtractedItem` (pydantic):
     `name: str`, `aliases: list[str] = []`, `confidence: float`
   - `ExtractedOccasion`: `name: str`, `date_phrase: str | None`, `confidence: float`
-  - `ExtractedEvent`: `description: str`, `when_phrase: str | None`,
+  - `Domain` = `Literal["social","job","home","health","finance","learning","errand","other"]`
+  - `ExtractedRecord` (pydantic): `kind: str` (raw slug the model proposes),
+    `domain: str | None`, `title: str`, `body: str | None = None`,
+    `when_phrase: str | None = None`, `due_phrase: str | None = None`,
+    `recurrence_phrase: str | None = None`,
+    `status: Literal["open","done","dropped"] | None = None`,
+    `assigned_by: str | None = None`,
     `people: list[str] = []`, `places: list[str] = []`, `items: list[str] = []`,
     `occasions: list[str] = []`, `attributes: dict = {}`, `confidence: float`
-  - `ExtractedTask`: `title: str`, `source: Literal["family","job","chore","self"]`,
-    `assigned_by: str | None`, `due_phrase: str | None`,
-    `recurrence_phrase: str | None`, `attributes: dict = {}`, `confidence: float`
   - `ExtractionResult`: `people: list[ExtractedPerson] = []`,
     `places: list[ExtractedPlace] = []`, `items: list[ExtractedItem] = []`,
-    `occasions: list[ExtractedOccasion] = []`, `events: list[ExtractedEvent] = []`,
-    `tasks: list[ExtractedTask] = []`
+    `occasions: list[ExtractedOccasion] = []`, `records: list[ExtractedRecord] = []`
+  - `io_assistant.models_domain.normalize_kind(raw: str) -> str` — lowercase,
+    spaces/hyphens → `_`, strip non `[a-z0-9_]`, collapse repeats, trim `_`,
+    cap 48 chars; empty → `"note"`.
+  - `io_assistant.models_domain.normalize_domain(raw: str | None) -> str | None` —
+    lowercased; returns it if in `Domain`'s set, `"other"` if a non-empty
+    unrecognized value, `None` if falsy.
   - `Backend` (Protocol) in `io_assistant/backend/interface.py`:
     - `route(self, utterance: str) -> Intent`
     - `extract(self, utterance: str, now: datetime) -> ExtractionResult`
@@ -938,13 +987,21 @@ def test_fakebackend_satisfies_protocol(fake_backend):
     assert isinstance(fake_backend, Backend)
 
 def test_fakebackend_extract_returns_result(fake_backend):
-    fake_backend.set_extraction(ExtractionResult(events=[]))
+    fake_backend.set_extraction(ExtractionResult(records=[]))
     out = fake_backend.extract("hi", dt.datetime.now(dt.timezone.utc))
     assert isinstance(out, ExtractionResult)
 
 def test_fakebackend_route_returns_configured_intent(fake_backend):
     fake_backend.set_intent("store")
     assert fake_backend.route("anything") == "store"
+
+def test_normalize_kind_and_domain():
+    from io_assistant.models_domain import normalize_kind, normalize_domain
+    assert normalize_kind("Gym Session") == "gym_session"
+    assert normalize_kind("  ") == "note"
+    assert normalize_domain("Job") == "job"
+    assert normalize_domain("astrology") == "other"
+    assert normalize_domain(None) is None
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -952,7 +1009,7 @@ def test_fakebackend_route_returns_configured_intent(fake_backend):
 Run: `uv run pytest tests/test_backend_interface.py -v`
 Expected: FAIL — `ModuleNotFoundError` / no `fake_backend` fixture
 
-- [ ] **Step 3: Implement `io_assistant/models_domain.py`** per the Interfaces block (all pydantic `BaseModel`s and the two `Literal` aliases).
+- [ ] **Step 3: Implement `io_assistant/models_domain.py`** per the Interfaces block — all pydantic `BaseModel`s, the `Literal` aliases (`Intent`, `AnswerShape`, `Domain`), and the `normalize_kind` / `normalize_domain` helpers.
 
 - [ ] **Step 4: Implement `io_assistant/backend/interface.py`**
 
@@ -1199,7 +1256,7 @@ def test_route_unknown_on_garbage(config, monkeypatch):
 
 def test_extract_parses_result(config, monkeypatch):
     _patch_chat(monkeypatch, '{"people":[{"name":"Nafay","aliases":[],"confidence":0.9}],'
-                             '"places":[],"items":[],"occasions":[],"events":[],"tasks":[]}')
+                             '"places":[],"items":[],"occasions":[],"records":[]}')
     r = LocalBackend(config).extract("saw Nafay", dt.datetime.now(dt.timezone.utc))
     assert r.people[0].name == "Nafay"
 
@@ -1241,9 +1298,12 @@ You extract structured data from one utterance. Output JSON ONLY, matching this 
 
 Rules:
 - Only include fields you can fill from the utterance.
-- Every record needs a "confidence" between 0 and 1.
+- Every record needs "kind", "title", and a "confidence" between 0 and 1.
+- kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
+  or a short coined slug like "gym_session" / "job_meeting" / "expense" for
+  anything else — then also set "domain".
 - Do NOT resolve dates. Put the raw phrase in "when_phrase" / "due_phrase" / "date_phrase".
-- People/places/items are referenced by name strings inside events/tasks AND listed
+- People/places/items are referenced by name strings inside each record AND listed
   in the top-level arrays.
 
 Examples:
@@ -1391,7 +1451,7 @@ def test_route_maps_intent(config):
 
 def test_extract_parses(config):
     payload = ('{"people":[],"places":[{"name":"Arcadian","aliases":[],"confidence":0.8}],'
-               '"items":[],"occasions":[],"events":[],"tasks":[]}')
+               '"items":[],"occasions":[],"records":[]}')
     c = FakeClient(payload)
     r = AnthropicBackend(config, client=c).extract("ate at Arcadian", dt.datetime.now(dt.timezone.utc))
     assert r.places[0].name == "Arcadian"
@@ -1491,8 +1551,8 @@ git commit -m "feat: AnthropicBackend"
   - `io_assistant.extract.schema.FEWSHOT: str` — 2–3 worked examples
     (utterance → JSON), including the Arcadian sentence.
   - `tests/fixtures/utterances_store.json` — a list of
-    `{"utterance": str, "expect": {...}}` where `expect` names the entities/events
-    that must appear (used by Task 9 and the e2e task). At least 5 entries.
+    `{"utterance": str, "expect": {...}}` where `expect` names the entities and
+    records that must appear (used by Task 9 and the e2e task). At least 5 entries.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_extract_schema.py`
 
@@ -1501,10 +1561,10 @@ import json
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
 from io_assistant.models_domain import ExtractionResult
 
-def test_schema_is_valid_json_and_mentions_events():
+def test_schema_is_valid_json_and_mentions_records():
     obj = json.loads(SCHEMA_JSON)
     assert "properties" in obj
-    assert "events" in json.dumps(obj)
+    assert "records" in json.dumps(obj)
 
 def test_fewshot_examples_parse_as_extraction_results():
     # every ```json block in FEWSHOT must validate
@@ -1532,6 +1592,12 @@ from io_assistant.models_domain import ExtractionResult
 SCHEMA_JSON = json.dumps(ExtractionResult.model_json_schema(), separators=(",", ":"))
 
 FEWSHOT = '''
+Every `record` needs `kind` and `title`. Use kind "event" for something that
+happened, "task" for a one-off to-do, "chore" for a recurring one. For anything
+that doesn't fit those, coin a short kind slug (e.g. "gym_session", "job_meeting",
+"expense") and set `domain` to one of:
+social, job, home, health, finance, learning, errand, other.
+
 Utterance: "I went out with Nafay to eat at Arcadian for his and Eelian's birthday"
 ```json
 {"people":[{"name":"Nafay","aliases":[],"confidence":0.95},
@@ -1539,27 +1605,37 @@ Utterance: "I went out with Nafay to eat at Arcadian for his and Eelian's birthd
  "places":[{"name":"Arcadian","aliases":[],"confidence":0.9}],
  "items":[],
  "occasions":[{"name":"Nafay and Eelian's birthday","date_phrase":null,"confidence":0.8}],
- "events":[{"description":"went out to eat","when_phrase":"today","people":["Nafay","Eelian"],
-            "places":["Arcadian"],"items":[],"occasions":["Nafay and Eelian's birthday"],
-            "attributes":{"meal":"dinner"},"confidence":0.9}],
- "tasks":[]}
+ "records":[{"kind":"event","domain":"social","title":"went out to eat with Nafay and Eelian",
+             "when_phrase":"today","people":["Nafay","Eelian"],"places":["Arcadian"],
+             "occasions":["Nafay and Eelian's birthday"],
+             "attributes":{"meal":"dinner"},"confidence":0.9}]}
 ```
 
 Utterance: "Mum asked me to pick up groceries tomorrow"
 ```json
 {"people":[{"name":"Mum","aliases":["mom","mother"],"confidence":0.9}],
  "places":[],"items":[{"name":"groceries","aliases":[],"confidence":0.8}],
- "occasions":[],"events":[],
- "tasks":[{"title":"pick up groceries","source":"family","assigned_by":"Mum",
-           "due_phrase":"tomorrow","recurrence_phrase":null,"attributes":{},"confidence":0.85}]}
+ "occasions":[],
+ "records":[{"kind":"task","domain":"home","title":"pick up groceries",
+             "assigned_by":"Mum","due_phrase":"tomorrow","status":"open",
+             "items":["groceries"],"attributes":{},"confidence":0.85}]}
 ```
 
 Utterance: "I take the trash out every Monday"
 ```json
 {"people":[],"places":[],"items":[{"name":"trash","aliases":[],"confidence":0.7}],
- "occasions":[],"events":[],
- "tasks":[{"title":"take the trash out","source":"chore","assigned_by":null,
-           "due_phrase":null,"recurrence_phrase":"every Monday","attributes":{},"confidence":0.9}]}
+ "occasions":[],
+ "records":[{"kind":"chore","domain":"home","title":"take the trash out",
+             "recurrence_phrase":"every Monday","status":"open",
+             "items":["trash"],"attributes":{},"confidence":0.9}]}
+```
+
+Utterance: "Did chest and triceps at the gym, bench went up to 80kg"
+```json
+{"people":[],"places":[],"items":[],"occasions":[],
+ "records":[{"kind":"gym_session","domain":"health","title":"chest and triceps",
+             "body":"bench up to 80kg","when_phrase":"today",
+             "attributes":{"lifts":{"bench_kg":80}},"confidence":0.85}]}
 ```
 '''
 ```
@@ -1569,17 +1645,23 @@ Utterance: "I take the trash out every Monday"
 ```json
 [
   {"utterance": "I went out with Nafay to eat at Arcadian for his and Eelian's birthday",
-   "expect": {"people": ["Nafay", "Eelian"], "places": ["Arcadian"], "events": 1}},
+   "expect": {"people": ["Nafay", "Eelian"], "places": ["Arcadian"], "records": 1, "kind": "event"}},
   {"utterance": "Mum asked me to pick up groceries tomorrow",
-   "expect": {"people": ["Mum"], "tasks": 1, "task_source": "family"}},
+   "expect": {"people": ["Mum"], "records": 1, "kind": "task", "domain": "home"}},
   {"utterance": "I take the trash out every Monday",
-   "expect": {"tasks": 1, "task_source": "chore", "recurring": true}},
+   "expect": {"records": 1, "kind": "chore", "recurring": true}},
   {"utterance": "Had coffee with Sara at Blue Bottle this morning",
-   "expect": {"people": ["Sara"], "places": ["Blue Bottle"], "events": 1}},
-  {"utterance": "My manager wants the report done by Friday",
-   "expect": {"tasks": 1, "task_source": "job"}}
+   "expect": {"people": ["Sara"], "places": ["Blue Bottle"], "records": 1, "kind": "event"}},
+  {"utterance": "My manager wants the quarterly report done by Friday",
+   "expect": {"records": 1, "domain": "job"}},
+  {"utterance": "Did chest and triceps at the gym today",
+   "expect": {"records": 1, "domain": "health"}}
 ]
 ```
+
+`expect.kind` / `expect.domain` are soft checks (the model may reasonably pick a
+neighbouring value) — Task 9's fixture test treats a mismatch on those as a
+warning, not a failure; `people` / `places` / `records`-count are hard checks.
 
 - [ ] **Step 5: Run to verify it passes** — `uv run pytest tests/test_extract_schema.py -v` → PASS
 
@@ -1629,13 +1711,13 @@ class FlakyBackend:
     def phrase(self, *a): ...
 
 def test_returns_result_first_try():
-    b = FlakyBackend([ExtractionResult(events=[])])
+    b = FlakyBackend([ExtractionResult(records=[])])
     out = Extractor(b).run("hi", dt.datetime.now(dt.timezone.utc))
     assert isinstance(out, ExtractionResult) and b.calls == 1
 
 def test_retries_once_then_succeeds():
     from io_assistant.backend.local import BackendParseError
-    b = FlakyBackend([BackendParseError("bad"), ExtractionResult(events=[])])
+    b = FlakyBackend([BackendParseError("bad"), ExtractionResult(records=[])])
     out = Extractor(b).run("hi", dt.datetime.now(dt.timezone.utc))
     assert isinstance(out, ExtractionResult) and b.calls == 2
 
@@ -1687,11 +1769,23 @@ def test_extractor_against_fixtures(config):
     data = json.loads(pathlib.Path("tests/fixtures/utterances_store.json").read_text())
     now = dt.datetime.now(dt.timezone.utc)
     for case in data:
+        exp = case["expect"]
         r = ex.run(case["utterance"], now)
         assert r is not None, case["utterance"]
+        # hard checks
         names = {p.name.lower() for p in r.people}
-        for want in case["expect"].get("people", []):
+        for want in exp.get("people", []):
             assert any(want.lower() in n or n in want.lower() for n in names), (case, names)
+        if "records" in exp:
+            assert len(r.records) == exp["records"], (case, r.records)
+        # soft checks (warn, don't fail — model may pick a neighbouring value)
+        if r.records:
+            got_kind = r.records[0].kind
+            got_domain = r.records[0].domain
+            if "kind" in exp and exp["kind"] != got_kind:
+                print(f"WARN kind: wanted {exp['kind']} got {got_kind} for {case['utterance']!r}")
+            if "domain" in exp and exp["domain"] != got_domain:
+                print(f"WARN domain: wanted {exp['domain']} got {got_domain} for {case['utterance']!r}")
 ```
 
 - [ ] **Step 6: Commit**
@@ -1851,19 +1945,19 @@ git commit -m "feat: deterministic date grounding and RRULE mapping"
 - Consumes: a DB `Session`, `Embedder` (Task 5), `ResolverConfig`, the ORM models.
 - Produces:
   - `io_assistant.resolve.resolver.EntityResolver(session, embedder, cfg: ResolverConfig)`
-  - `resolve(self, kind: Literal["person","place","item"], name: str, aliases: list[str]) -> ResolveOutcome`
+  - `resolve(self, entity_type: Literal["person","place","item"], name: str, aliases: list[str]) -> ResolveOutcome`
     where `ResolveOutcome` (dataclass): `entity_id: int | None`, `is_new: bool`,
     `ambiguous: bool`, `candidate_id: int | None`, `candidate_name: str | None`.
+    (`entity_type` — not `kind` — to avoid confusion with `Record.kind`.)
     - exact (case-insensitive) match on canonical name/name or any alias → `entity_id` set, not ambiguous, not new.
     - else fuzzy (`rapidfuzz.fuzz.token_set_ratio`) ≥ `cfg.fuzzy_threshold` → same.
     - else embed `name`, cosine-search that table; best similarity ≥ `cfg.vector_similarity_threshold` → `ambiguous=True`, `candidate_id`/`candidate_name` set, `entity_id=None`.
     - else → `is_new=True`, `entity_id=None`.
-  - `create(self, kind, name, aliases) -> int` — inserts the new entity **without**
-    embedding (Persist computes embeddings in its transaction) and returns the id.
-    Actually: to keep vector search consistent, `create` should compute and store
-    the embedding here. Decision: **Resolver owns entity creation + its embedding**;
-    Persist owns event/task rows + their embeddings. Document this split in
-    `.claude/knowledge/extraction.md`.
+  - `create(self, entity_type, name, aliases) -> int` — inserts the new entity,
+    **computes and stores its embedding here**, returns the id. Decision:
+    **Resolver owns person/place/item creation + its embedding**; Persist owns
+    `records` rows, `occasions` rows, and all link rows (+ their embeddings).
+    Document this split in `.claude/knowledge/extraction.md`.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_resolve.py`
 
@@ -1915,7 +2009,8 @@ def test_new_entity(db, config):
 
 - [ ] **Step 3: Implement `io_assistant/resolve/resolver.py`** — use SQLAlchemy
   `select`, `func.lower`, `rapidfuzz`, and pgvector's `.cosine_distance()`
-  (similarity = `1 - distance`). Table/column per `kind`.
+  (similarity = `1 - distance`). Table/column chosen per `entity_type`
+  (`person`→`people.canonical_name`, `place`→`places.name`, `item`→`items.name`).
 
 - [ ] **Step 4: Run to verify it passes** → PASS
 
@@ -1939,7 +2034,7 @@ git commit -m "feat: EntityResolver (exact/fuzzy/vector/new)"
   `ground`/`to_rrule` (Task 11), ORM models.
 - Produces:
   - `io_assistant.persist.writer.PersistResult` (dataclass):
-    `utterance_id: int`, `event_ids: list[int]`, `task_ids: list[int]`,
+    `utterance_id: int`, `record_ids: list[int]`,
     `new_entities: list[tuple[str,str]]`, `gated: bool`, `gate_reasons: list[str]`.
   - `io_assistant.persist.writer.persist_store(session, embedder, resolver, *,
       utterance_text: str, source: str, captured_at: datetime,
@@ -1947,20 +2042,27 @@ git commit -m "feat: EntityResolver (exact/fuzzy/vector/new)"
       confirmed: bool = False) -> PersistResult`
     - Always inserts the `Utterance` row first (verbatim), sets `resolved_intent="store"`.
     - Resolves every person/place/item. If any resolve is `ambiguous`, or any
-      record `confidence < confidence_gate`, or any date phrase grounds with
-      `ok=False`: when `confirmed` is False → set `gated=True`, populate
+      `ExtractedRecord.confidence < confidence_gate`, or any date phrase grounds
+      with `ok=False`: when `confirmed` is False → set `gated=True`, populate
       `gate_reasons`, **roll back** everything except the utterance row, return.
       When `confirmed` is True → proceed, creating new entities for ambiguous
       resolves.
     - Creates new entities via `resolver.create(...)`.
-    - Inserts `Event` rows (`occurred_at` from `ground(when_phrase)`, falling back
-      to `now`), computes their embedding from `description`, links people/places/
-      items/occasions.
-    - Inserts `Task` rows (`due_at` from `ground(due_phrase)`,
-      `recurrence_rule` from `to_rrule(recurrence_phrase)`, `status="open"`,
-      `assigned_by_person_id` resolved from `assigned_by`), embeds `title`.
-    - Inserts `Occasion` rows (dedupe by name via resolver-style exact match),
-      links to people.
+    - For each `ExtractedRecord`, inserts a `Record` row:
+      - `kind = normalize_kind(rec.kind)`, `domain = normalize_domain(rec.domain)`
+      - `title = rec.title`, `body = rec.body`
+      - `occurred_at = ground(rec.when_phrase, now).value` (may be None)
+      - `due_at = ground(rec.due_phrase, now).value` (may be None)
+      - `recurrence_rule = to_rrule(rec.recurrence_phrase)`
+      - `status = rec.status` (default `"open"` only when `kind in {"task","chore"}`
+        and `rec.status is None`; else keep `rec.status`, which may be None)
+      - `assigned_by_person_id` = resolved id of `rec.assigned_by` (None if absent)
+      - `attributes = rec.attributes`
+      - embedding from `title + "\n" + (body or "")`
+      - links: `RecordPerson` / `RecordPlace` / `RecordItem` / `RecordOccasion`
+        for each resolved name in `rec.people` / `.places` / `.items` / `.occasions`
+    - Inserts `Occasion` rows (dedupe by name via resolver-style exact match on
+      the `occasions` table), links to people via `OccasionPerson`.
     - Commits. On any exception, rolls back and re-raises `PersistError`.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_persist.py`
@@ -1971,7 +2073,7 @@ from tests.conftest import requires_db
 from io_assistant.persist.writer import persist_store
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.models_domain import (
-    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedEvent, ExtractedOccasion)
+    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord, ExtractedOccasion)
 from io_assistant.db import models as m
 
 class StubEmbedder:
@@ -1986,46 +2088,61 @@ def _arcadian() -> ExtractionResult:
                 ExtractedPerson(name="Eelian", confidence=0.9)],
         places=[ExtractedPlace(name="Arcadian", confidence=0.9)],
         occasions=[ExtractedOccasion(name="Nafay and Eelian's birthday", date_phrase=None, confidence=0.8)],
-        events=[ExtractedEvent(description="went out to eat", when_phrase="today",
-                               people=["Nafay","Eelian"], places=["Arcadian"],
-                               occasions=["Nafay and Eelian's birthday"],
-                               attributes={"meal":"dinner"}, confidence=0.9)])
+        records=[ExtractedRecord(kind="event", domain="social",
+                                 title="went out to eat", when_phrase="today",
+                                 people=["Nafay","Eelian"], places=["Arcadian"],
+                                 occasions=["Nafay and Eelian's birthday"],
+                                 attributes={"meal":"dinner"}, confidence=0.9)])
 
 @requires_db
-def test_persists_event_with_links(db, config):
+def test_persists_record_with_links(db, config):
     res = EntityResolver(db, StubEmbedder(), config.resolver)
     out = persist_store(db, StubEmbedder(), res,
         utterance_text="I went out with Nafay to eat at Arcadian for his and Eelian's birthday",
         source="text", captured_at=NOW, extraction=_arcadian(), now=NOW,
         confidence_gate=config.resolver.confidence_gate_threshold)
-    assert not out.gated and len(out.event_ids) == 1
-    ev = db.get(m.Event, out.event_ids[0])
-    assert ev.attributes["meal"] == "dinner"
-    assert ev.occurred_at.date() == dt.date(2026, 9, 7)
-    assert db.query(m.EventPerson).filter_by(event_id=ev.id).count() == 2
-    assert db.query(m.EventPlace).filter_by(event_id=ev.id).count() == 1
+    assert not out.gated and len(out.record_ids) == 1
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.kind == "event" and rec.attributes["meal"] == "dinner"
+    assert rec.occurred_at.date() == dt.date(2026, 9, 7)
+    assert db.query(m.RecordPerson).filter_by(record_id=rec.id).count() == 2
+    assert db.query(m.RecordPlace).filter_by(record_id=rec.id).count() == 1
+    assert db.query(m.RecordOccasion).filter_by(record_id=rec.id).count() == 1
     assert db.query(m.Person).filter(m.Person.canonical_name.in_(["Nafay","Eelian"])).count() == 2
+
+@requires_db
+def test_arbitrary_kind_record(db, config):
+    ext = ExtractionResult(records=[ExtractedRecord(
+        kind="Gym Session", domain="fitness", title="leg day",
+        body="squats 100kg", when_phrase="today", confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="did leg day, squats up to 100", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.kind == "gym_session"       # normalized
+    assert rec.domain == "other"           # "fitness" not in the known set
 
 @requires_db
 def test_low_confidence_gates_and_keeps_only_utterance(db, config):
     ext = _arcadian()
-    ext.events[0].confidence = 0.3
+    ext.records[0].confidence = 0.3
     out = persist_store(db, StubEmbedder(),
         EntityResolver(db, StubEmbedder(), config.resolver),
         utterance_text="mumble arcadian something", source="text", captured_at=NOW,
         extraction=ext, now=NOW, confidence_gate=0.6)
     assert out.gated and "low confidence" in " ".join(out.gate_reasons).lower()
-    assert db.query(m.Event).count() == 0
+    assert db.query(m.Record).count() == 0
     assert db.get(m.Utterance, out.utterance_id) is not None
 
 @requires_db
 def test_confirmed_bypasses_gate(db, config):
-    ext = _arcadian(); ext.events[0].confidence = 0.3
+    ext = _arcadian(); ext.records[0].confidence = 0.3
     out = persist_store(db, StubEmbedder(),
         EntityResolver(db, StubEmbedder(), config.resolver),
         utterance_text="x", source="text", captured_at=NOW, extraction=ext, now=NOW,
         confidence_gate=0.6, confirmed=True)
-    assert not out.gated and len(out.event_ids) == 1
+    assert not out.gated and len(out.record_ids) == 1
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -2128,8 +2245,10 @@ git commit -m "feat: HybridBackend and backend factory"
       - `Extractor.run` → `None` → insert utterance with `marker="extraction_failed"`,
         message says so.
       - gated → message lists `gate_reasons` and says "reply 'yes' to confirm".
-      - stored → message summarizes what was written
-        ("Stored: 1 event, people: Nafay, Eelian; place: Arcadian").
+      - stored → message summarizes what was written, one line per record as
+        `"Stored: <kind> \"<title>\"" ` plus, when non-empty,
+        `"; people: <names>"`, `"; place(s): <names>"`, `"; due <due_at>"`.
+        Example: `Stored: event "went out to eat with Nafay and Eelian"; people: Nafay, Eelian; place: Arcadian`.
   - `io_assistant.cli.app` — a Typer app:
     - `io store "<text>"` → runs `handle`, prints `message`.
     - `io repl` → reads lines; if the previous result was gated and the line is
@@ -2143,20 +2262,21 @@ import datetime as dt
 from tests.conftest import requires_db
 from io_assistant.orchestrator import Orchestrator
 from io_assistant.models_domain import (
-    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedEvent)
+    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord)
 from io_assistant.db.base import make_engine, make_session_factory
 from io_assistant.db import models as m
 
 NOW = dt.datetime(2026, 9, 7, 18, 0, tzinfo=dt.timezone.utc)
 
 @requires_db
-def test_store_path_writes_event(db, engine, config, fake_backend, monkeypatch):
+def test_store_path_writes_record(db, engine, config, fake_backend, monkeypatch):
     fake_backend.set_intent("store")
     fake_backend.set_extraction(ExtractionResult(
         people=[ExtractedPerson(name="Nafay", confidence=0.95)],
         places=[ExtractedPlace(name="Arcadian", confidence=0.9)],
-        events=[ExtractedEvent(description="dinner", when_phrase="today",
-                               people=["Nafay"], places=["Arcadian"], confidence=0.9)]))
+        records=[ExtractedRecord(kind="event", domain="social", title="dinner",
+                                 when_phrase="today", people=["Nafay"],
+                                 places=["Arcadian"], confidence=0.9)]))
     # embedder stub so no Ollama needed
     import io_assistant.orchestrator as orch
     monkeypatch.setattr(orch, "Embedder", lambda cfg: type("E", (), {
@@ -2164,9 +2284,9 @@ def test_store_path_writes_event(db, engine, config, fake_backend, monkeypatch):
         "embed": lambda self, ts: [[0.0]*768 for _ in ts]})())
     o = Orchestrator(config, session_factory=lambda: db, backend=fake_backend)
     res = o.handle("I had dinner with Nafay at Arcadian", captured_at=NOW)
-    assert res.intent == "store" and res.stored and len(res.stored.event_ids) == 1
+    assert res.intent == "store" and res.stored and len(res.stored.record_ids) == 1
     assert "Nafay" in res.message
-    assert db.query(m.Event).count() == 1
+    assert db.query(m.Record).count() == 1
 
 @requires_db
 def test_unknown_intent_message(db, config, fake_backend):
@@ -2203,7 +2323,8 @@ uv run alembic upgrade head
 uv run io store "I went out with Nafay to eat at Arcadian for his and Eelian's birthday"
 ```
 
-Expected: prints a "Stored: 1 event ..." summary. Verify rows with `psql`.
+Expected: prints a `Stored: event "..."; people: ...` summary. Verify rows with
+`docker compose exec db psql -U io -d io -c "select kind,title from records;"`.
 
 - [ ] **Step 6: Commit**
 
@@ -2239,7 +2360,7 @@ NOW = dt.datetime(2026, 9, 7, 18, 0, tzinfo=dt.timezone.utc)
 @requires_db
 def test_arcadian_scenario_with_fake_backend(db, config, fake_backend, monkeypatch):
     from io_assistant.models_domain import (
-        ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedEvent, ExtractedOccasion)
+        ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord, ExtractedOccasion)
     fake_backend.set_intent("store")
     fake_backend.set_extraction(ExtractionResult(
         people=[ExtractedPerson(name="Nafay", confidence=0.95),
@@ -2247,10 +2368,11 @@ def test_arcadian_scenario_with_fake_backend(db, config, fake_backend, monkeypat
         places=[ExtractedPlace(name="Arcadian", confidence=0.9)],
         occasions=[ExtractedOccasion(name="Nafay and Eelian's birthday",
                                      date_phrase=None, confidence=0.8)],
-        events=[ExtractedEvent(description="went out to eat", when_phrase="today",
-                               people=["Nafay","Eelian"], places=["Arcadian"],
-                               occasions=["Nafay and Eelian's birthday"],
-                               attributes={"meal":"dinner"}, confidence=0.9)]))
+        records=[ExtractedRecord(kind="event", domain="social",
+                                 title="went out to eat", when_phrase="today",
+                                 people=["Nafay","Eelian"], places=["Arcadian"],
+                                 occasions=["Nafay and Eelian's birthday"],
+                                 attributes={"meal":"dinner"}, confidence=0.9)]))
     import io_assistant.orchestrator as orch
     monkeypatch.setattr(orch, "Embedder", lambda cfg: type("E", (), {
         "embed_one": lambda self, t: [0.0]*768,
@@ -2258,13 +2380,14 @@ def test_arcadian_scenario_with_fake_backend(db, config, fake_backend, monkeypat
     o = Orchestrator(config, session_factory=lambda: db, backend=fake_backend)
     res = o.handle("I went out with Nafay to eat at Arcadian for his and Eelian's birthday",
                    captured_at=NOW)
-    assert res.stored and len(res.stored.event_ids) == 1
-    ev = db.get(m.Event, res.stored.event_ids[0])
-    assert ev.occurred_at.date() == dt.date(2026, 9, 7)
-    people = {ep.person_id for ep in db.query(m.EventPerson).filter_by(event_id=ev.id)}
+    assert res.stored and len(res.stored.record_ids) == 1
+    rec = db.get(m.Record, res.stored.record_ids[0])
+    assert rec.kind == "event"
+    assert rec.occurred_at.date() == dt.date(2026, 9, 7)
+    people = {rp.person_id for rp in db.query(m.RecordPerson).filter_by(record_id=rec.id)}
     assert len(people) == 2
-    assert db.query(m.EventPlace).filter_by(event_id=ev.id).count() == 1
-    assert db.query(m.EventOccasion).filter_by(event_id=ev.id).count() == 1
+    assert db.query(m.RecordPlace).filter_by(record_id=rec.id).count() == 1
+    assert db.query(m.RecordOccasion).filter_by(record_id=rec.id).count() == 1
 
 def test_local_first_no_foreign_sockets(config, monkeypatch):
     """LocalBackend + Embedder must only ever connect to localhost."""
@@ -2333,6 +2456,13 @@ git commit -m "test: end-to-end Arcadian store scenario and local-first socket g
 described by content source rather than transcribed — acceptable because they are
 summaries of a spec that travels with this plan, and the exact prose is not
 load-bearing for later tasks. Everything code-bearing has real code.
+
+**Data model (spec §3, revised 2026-09-07):** `events` + `tasks` are replaced by
+one open-ended `records` table (`kind` slug + optional `domain`) so new life
+domains never need a migration. `ExtractionResult.records: list[ExtractedRecord]`,
+`PersistResult.record_ids`, ORM `Record` / `RecordPerson` / `RecordPlace` /
+`RecordItem` / `RecordOccasion`. `normalize_kind` / `normalize_domain` in
+`models_domain` sanitize the model's proposed values.
 
 **Type consistency:** `ExtractionResult` field names are fixed in Task 4 and used
 identically in Tasks 6–9, 13, 15, 16. `ResolveOutcome` / `PersistResult` /
