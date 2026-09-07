@@ -8,11 +8,18 @@
 
 ## 1. Vision & scope
 
-IO is a fully local, single-user AI assistant. It runs on the user's own machine
-with no API keys, no subscriptions, and no cloud services. It listens or reads
-what the user tells it, and over time builds a structured, queryable record of
-the user's life — events, people, places, things, tasks — plus a verbatim log of
-how the user talks and types (for later mannerism modelling).
+IO is a local-first, single-user AI assistant. Out of the box it runs entirely
+on the user's own machine with no API keys, no subscriptions, and no cloud
+services. A cloud model backend (Anthropic) is available as an explicit opt-in
+for when the local hardware can't keep up — see §13. It listens or reads what the
+user tells it, and over time builds a structured, queryable record of the user's
+life — events, people, places, things, tasks — plus a verbatim log of how the
+user talks and types (for later mannerism modelling).
+
+A hard constraint: IO must be a good citizen on the machine it runs on. The user
+uses this laptop for everything else too, so the default configuration is sized
+to leave the machine comfortably usable during normal work, not to consume it.
+Model-heavy "quality" settings are opt-in. See §13.
 
 ### Target hardware
 
@@ -23,7 +30,8 @@ Windows 11. All model choices assume this envelope.
 
 Local voice/text capture → intent routing → structured extraction & storage →
 hybrid (structured + RAG) query answering, exposed through both a CLI and a
-desktop chat app. Fully offline.
+desktop chat app. Fully offline in the default configuration; a cloud model
+backend is an explicit opt-in (§13).
 
 **In scope:**
 
@@ -41,6 +49,8 @@ desktop chat app. Fully offline.
 - Desktop chat app (approach A: `pywebview` + local FastAPI backend), structured
   as a multi-view client with the chat view active and timeline/sources/review
   views stubbed.
+- A model-provider abstraction with two implementations — local (Ollama) and
+  Anthropic — selectable in config, plus resource-budget controls (§13).
 
 **Explicitly deferred to later phases:**
 
@@ -62,20 +72,26 @@ communicates through a defined interface, and is testable in isolation.
 |---|---|---|
 | **Capture** | global hotkey listener, mic capture, passive-mode VAD, typed input | `sounddevice`, `pynput` |
 | **Transcribe** | audio → text | `faster-whisper` (CUDA) |
-| **Route** | classify an utterance as `STORE` / `QUERY` / `UNKNOWN` | Ollama (small instruct model) |
-| **Extract** | utterance → strict JSON matching the extraction schema | Ollama |
+| **Route** | classify an utterance as `STORE` / `QUERY` / `UNKNOWN` | `Backend` (§13) |
+| **Extract** | utterance → strict JSON matching the extraction schema | `Backend` (§13) |
 | **Resolve** | map extracted entities to existing DB rows (exact → fuzzy → vector → new); trigger the confirmation gate on ambiguity | `rapidfuzz`, `pgvector` |
 | **Persist** | write normalized rows, link rows, embeddings, and the raw utterance in one transaction | SQLAlchemy |
 | **Query** | planner → sub-queries → structured SQL + semantic retrieval → merge/rank → recurrence expansion | SQLAlchemy, `pgvector` |
-| **Respond** | LLM phrases the final answer strictly from retrieved rows | Ollama |
+| **Respond** | LLM phrases the final answer strictly from retrieved rows | `Backend` (§13) |
 | **Orchestrator** | wires the pipeline; owns config, logging, session state; exposes the FastAPI service | FastAPI |
+
+Every model call goes through the `Backend` interface (§13), not a hardcoded
+Ollama client. Embeddings are always generated locally regardless of backend, so
+the vector space stays stable.
 
 ### The LLM boundary (hard rule)
 
-The local model is used **only** for: intent routing, structured extraction,
-query planning, and final answer phrasing. It never emits SQL, never does date
-arithmetic, never filters or ranks data. All logic, dedup, date grounding,
-filtering, ranking, and SQL construction is deterministic application code.
+The model (local or cloud) is used **only** for: intent routing, structured
+extraction, query planning, and final answer phrasing. It never emits SQL, never
+does date arithmetic, never filters or ranks data. All logic, dedup, date
+grounding, filtering, ranking, and SQL construction is deterministic application
+code. This boundary is what makes the local/cloud backend swap safe — a weaker
+local model can't corrupt the datastore, it can only extract less well.
 
 ### Data flow
 
@@ -365,8 +381,8 @@ frontend/
 
 - **Rendering:** one `renderMessage()` handles all output — raw text passes
   through, Markdown renders, fenced ` ```mermaid ` blocks render as diagrams.
-- **Offline constraint:** all JS/CSS libraries are vendored into the repo. No CDN
-  references (would violate offline-only).
+- **Local-first constraint:** all JS/CSS libraries are vendored into the repo. No
+  CDN references.
 - **Phase 1:** `chat` is fully functional. `timeline`, `sources`, `review` are
   routed and visible in the nav but render a clear "coming in a later phase"
   placeholder — the shell is real so later phases only fill in views.
@@ -383,18 +399,19 @@ Phase 1.
 ## 8. Tech stack & project layout
 
 - **Python 3.11+**, `uv` for environment and dependency management.
-- **Ollama** as a local service. Models (names in `config.toml`):
-  - small instruct model for route/extract/plan/phrase — e.g. `qwen2.5:7b` or
-    `llama3.1:8b`, Q4 quantization, GPU offload.
-  - `nomic-embed-text` for embeddings.
-- **faster-whisper**, `small` or `medium` model, CUDA.
+- **Ollama** as the local model service (default backend). Model names per the
+  resource profile in §13.
+- **`anthropic` SDK** for the optional cloud backend (§13).
+- **faster-whisper**, model size per the resource profile, CUDA.
 - **PostgreSQL 16** local + `pgvector` extension. **SQLAlchemy 2.x** + **Alembic**.
 - **FastAPI** + `uvicorn` for the local service; **pywebview** for the window.
-- **Config:** a single `config.toml` (model names, thresholds, hotkey, passive
-  on/off, database URL, embedding dimension, top-N) plus `.env` for the database
-  URL if the user prefers to keep it out of the toml.
+- **Config:** a single `config.toml` — `[backend]` (provider + resource profile,
+  §13), thresholds, hotkey, passive on/off, database URL, embedding dimension,
+  top-N — plus `.env` for the database URL and, if the cloud backend is used, the
+  Anthropic credential (never written to `config.toml`).
 - **Runs as:** a foreground process (`io run`) that starts the FastAPI service
-  and opens the window. PostgreSQL and Ollama are the only background services.
+  and opens the window. PostgreSQL and (in local mode) Ollama are the only
+  background services.
 
 ### Repo layout
 
@@ -408,6 +425,7 @@ io/
   persist/           # transactional writes, embedding generation
   query/             # planner, sql compiler, retrieval, ranking, recurrence
   respond/           # answer phrasing
+  backend/           # Backend interface, LocalBackend (Ollama), AnthropicBackend, embed
   orchestrator.py    # pipeline wiring + FastAPI app
   db/
     models.py
@@ -451,7 +469,12 @@ every stage.
      today.
 - **Test database:** a disposable local PostgreSQL (Docker or a dedicated local
   cluster); the DB is never mocked.
-- **Offline check:** a test that fails if any component opens a non-local socket.
+- **Local-first check:** a test that fails if any component opens a socket to a
+  host other than localhost (or `api.anthropic.com` when the cloud backend is
+  explicitly configured).
+- **Backend parity:** the STORE and QUERY end-to-end scenarios run against a
+  stub backend in CI and can be run against `LocalBackend` and `AnthropicBackend`
+  locally, asserting the same structured DB outcomes.
 
 ---
 
@@ -466,12 +489,19 @@ Four project-local directories, wired into `CLAUDE.md`.
 - `extraction.md` — schema, prompt design, resolver rules, gate triggers.
 - `query-pipeline.md` — planner, hybrid retrieval, ranking, recurrence, efficiency.
 - `local-stack.md` — Ollama / Whisper / Postgres setup, model names, hardware notes.
+- `model-backends.md` — the `Backend` interface, local vs Anthropic, resource
+  profiles, how the swap stays safe (§13).
 - `conventions.md` — code style, test layout, config approach.
 
 ### `.claude/rules/`
 
-- `offline-only.md` — no API calls, no cloud, no telemetry, no CDN assets; any
-  network dependency to a non-local host is a bug.
+- `local-first.md` — no telemetry, no CDN assets, no bundled-in cloud calls. The
+  **only** permitted non-local network traffic is the Anthropic backend when the
+  user has explicitly set `backend.provider = "anthropic"` (or `"hybrid"`) in
+  `config.toml`. Any other outbound connection to a non-local host is a bug.
+- `resource-budget.md` — the default profile must leave the machine usable during
+  normal work: on-demand model loading, short Ollama `keep_alive`, single loaded
+  model, capped threads. "quality" profile changes are opt-in only.
 - `llm-boundaries.md` — the model never emits SQL, never does date math, never
   filters or ranks; deterministic code owns all logic.
 - `test-discipline.md` — TDD, tests before implementation, real test Postgres,
@@ -495,9 +525,10 @@ Four project-local directories, wired into `CLAUDE.md`.
 
 ### `CLAUDE.md`
 
-References all four directories, states the offline-only prime directive, points
-to `.claude/state/session.md` as the first file to read each session, and
-enforces the `rules/` files.
+References all four directories, states the local-first prime directive (and its
+one sanctioned exception, the opt-in Anthropic backend), points to
+`.claude/state/session.md` as the first file to read each session, and enforces
+the `rules/` files.
 
 ---
 
@@ -509,44 +540,139 @@ Each stage is independently testable and leaves the system in a working state.
    scaffold + `CLAUDE.md`, CI-less test runner. Test: config loads, package imports.
 2. **Database foundation** — SQLAlchemy models, initial Alembic migration,
    pgvector setup, test-DB fixture. Test: migrate up/down, insert each entity.
-3. **Persistence layer** — transactional writes + embedding generation (Ollama
-   embed). Test: write the Arcadian event by hand, read it back with links.
-4. **Resolver** — exact/fuzzy/vector/new + confirmation gate. Test: seeded-entity
+3. **Backend abstraction** — the `Backend` interface (`route`/`extract`/`plan`/
+   `phrase`), `LocalBackend` (Ollama), `AnthropicBackend`, a local `embed()`
+   shared by both, resource-profile config, factory from `config.toml`. Test:
+   a fake backend satisfies the interface; `LocalBackend` round-trips a trivial
+   prompt against Ollama; `embed()` returns the configured dimension.
+4. **Persistence layer** — transactional writes + embedding generation via
+   `embed()`. Test: write the Arcadian event by hand, read it back with links.
+5. **Resolver** — exact/fuzzy/vector/new + confirmation gate. Test: seeded-entity
    unit matrix.
-5. **Extractor** — schema, prompts, Pydantic validation, retry. Test: fixture
-   utterances → JSON.
-6. **Router** — STORE/QUERY/UNKNOWN. Test: labelled fixture utterances.
-7. **STORE path end-to-end** (text input only) — Route → Extract → Resolve →
+6. **Extractor** — schema, prompts, Pydantic validation, retry; calls
+   `backend.extract`. Test: fixture utterances → JSON (run against both a stub
+   and the real local backend).
+7. **Router** — STORE/QUERY/UNKNOWN via `backend.route`. Test: labelled fixtures.
+8. **STORE path end-to-end** (text input only) — Route → Extract → Resolve →
    Persist. Test: scenario 1.
-8. **Query planner** — question → `QueryPlan`. Test: fixtures.
-9. **SQL compiler + retrieval** — structured path only. Test: plan → SQL → rows.
-10. **Semantic retrieval + merge/rank + recurrence expansion**. Test: hybrid
+9. **Query planner** — question → `QueryPlan` via `backend.plan`. Test: fixtures.
+10. **SQL compiler + retrieval** — structured path only. Test: plan → SQL → rows.
+11. **Semantic retrieval + merge/rank + recurrence expansion**. Test: hybrid
     results, ranking, RRULE expansion.
-11. **Respond** — phrasing with text/markdown/diagram shapes. Test: rows →
-    answer, "nothing matched" case.
-12. **QUERY path end-to-end** (text input). Test: scenarios 2 and 3.
-13. **FastAPI service** — REST + WebSocket wrapping the Orchestrator. Test: HTTP
+12. **Respond** — phrasing with text/markdown/diagram shapes via `backend.phrase`.
+    Test: rows → answer, "nothing matched" case.
+13. **QUERY path end-to-end** (text input). Test: scenarios 2 and 3.
+14. **FastAPI service** — REST + WebSocket wrapping the Orchestrator. Test: HTTP
     client drives both scenarios.
-14. **Desktop app shell** — `pywebview` window, router, chat view, vendored
-    markdown + mermaid renderers, stub views. Test: manual + a headless DOM smoke
-    test where feasible.
-15. **Transcribe** — `faster-whisper` wrapper. Test: fixed WAV → expected text
-    (tolerant).
-16. **Capture** — push-to-talk hotkey + typed input wired to the service. Test:
+15. **Desktop app shell** — `pywebview` window, router, chat view, vendored
+    markdown + mermaid renderers, stub views, a backend/profile indicator. Test:
+    manual + a headless DOM smoke test where feasible.
+16. **Transcribe** — `faster-whisper` wrapper, model size from the resource
+    profile. Test: fixed WAV → expected text (tolerant).
+17. **Capture** — push-to-talk hotkey + typed input wired to the service. Test:
     manual; unit-test the `Utterance` assembly.
-17. **Passive mode** — VAD loop behind the config flag. Test: manual with a WAV
+18. **Passive mode** — VAD loop behind the config flag. Test: manual with a WAV
     stream; unit-test segmentation.
-18. **Hardening** — offline-socket test, error surfaces in the UI, config
-    validation, `run-local` skill verified.
+19. **Hardening** — `io doctor` (checks Postgres, pgvector, Ollama or Anthropic
+    credential, models present, VRAM headroom), the local-first socket test
+    (allows only localhost + `api.anthropic.com` when the cloud backend is on),
+    error surfaces in the UI, config validation, `run-local` verified.
 
 ---
 
 ## 12. Open questions / assumptions
 
-- **Instruct model choice** (`qwen2.5:7b` vs `llama3.1:8b`) is settled empirically
-  during stage 5–6 against the extraction fixtures; config-driven, so not
-  blocking.
-- **Whisper model size** (`small` vs `medium`) tuned in stage 15 against latency
-  on the 3060.
+- **Local instruct model choice** per profile is settled empirically during
+  stages 6–7 against the extraction fixtures; config-driven, so not blocking.
+- **Whisper model size** per profile tuned in stage 16 against latency on the 3060.
 - Assumes the user installs PostgreSQL + `pgvector` and Ollama themselves;
-  `run-local.md` documents the exact steps and `io doctor` (stage 18) checks them.
+  `run-local.md` documents the exact steps and `io doctor` (stage 19) checks them.
+- The Anthropic backend assumes the user provides their own credential (API key
+  or `ant auth login` profile). IO never creates or manages that credential.
+
+---
+
+## 13. Model provider & resource budget
+
+### 13.1 The `Backend` interface
+
+One interface, all model use behind it:
+
+```
+class Backend(Protocol):
+    def route(self, utterance: str) -> Intent: ...
+    def extract(self, utterance: str, now: datetime) -> ExtractionResult: ...
+    def plan(self, question: str, now: datetime) -> QueryPlan: ...
+    def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str: ...
+```
+
+- **`LocalBackend`** — talks to Ollama. Default.
+- **`AnthropicBackend`** — uses the `anthropic` SDK. Model configurable, default
+  `claude-haiku-4-5` (cheapest current model, $1 / $5 per 1M tokens); `claude-sonnet-5`
+  available for users who want more extraction quality.
+- **`HybridBackend`** — routes the cheap, high-frequency calls (`route`) to
+  `LocalBackend` and the quality-sensitive calls (`extract`, `plan`, `phrase`) to
+  `AnthropicBackend`. For users whose machine can run a small model fine but who
+  want better extraction without a full local 8B.
+
+**Embeddings are always local** (`embed()` → Ollama `nomic-embed-text`, ~140M
+params, negligible footprint), regardless of `backend.provider`. This keeps the
+pgvector space stable — switching provider never requires a re-embed. If the user
+later changes the *embedding* model, that is an Alembic migration + backfill.
+
+Selected in `config.toml`:
+
+```toml
+[backend]
+provider = "local"          # "local" | "anthropic" | "hybrid"
+profile  = "light"          # "light" | "quality"  (local/hybrid only)
+anthropic_model = "claude-haiku-4-5"
+```
+
+### 13.2 Resource profiles (local / hybrid)
+
+| | `light` (default) | `quality` (opt-in) |
+|---|---|---|
+| Instruct model | 3–4B Q4 (e.g. `llama3.2:3b`, `qwen2.5:3b`) | 7–8B Q4 (e.g. `qwen2.5:7b`) |
+| Resident VRAM (model idle-unloaded) | ~0 | ~0 |
+| Resident VRAM (mid-request) | ~3–4 GB | ~5.5 GB |
+| Whisper | `base` | `small` |
+| Target: machine usable for normal work during a request | yes | degraded during the call |
+
+The `light` profile is chosen so that a single extraction or query call briefly
+uses roughly half the GPU and a few CPU threads, then releases it — the user can
+keep working through it. `quality` will make the machine sluggish for the couple
+of seconds a call runs.
+
+### 13.3 Budget controls (enforced by `LocalBackend` / the Ollama config)
+
+- **On-demand loading:** models are not preloaded at startup. First call pays a
+  load cost; thereafter Ollama keeps the model warm only briefly.
+- **`keep_alive` short** (default `"30s"`, configurable): VRAM is returned to the
+  system soon after IO goes idle, so IO isn't holding the GPU while the user games
+  or edits video.
+- **One model at a time:** `OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`
+  — IO never runs two models concurrently.
+- **Thread cap:** `num_thread` capped (default: physical cores − 2) so inference
+  never pins the whole CPU.
+- **No passive-mode model residency:** passive listening keeps only the tiny VAD
+  and (when a segment fires) Whisper active; the instruct model still loads
+  on-demand per utterance.
+- **`io doctor` VRAM check:** warns if free VRAM is below the profile's mid-request
+  need, and suggests `quality`→`light` or the Anthropic backend.
+
+### 13.4 When to switch (documented in `model-backends.md`)
+
+- Extraction quality on the `light` profile is poor for the user's phrasing →
+  try `quality`, then `hybrid`, then `anthropic`.
+- The machine is too loaded to spare any GPU (heavy other workloads) →
+  `anthropic` (no local model at all; only Whisper stays local, and STT can be
+  disabled to go fully thin).
+- Offline requirement is absolute → stay `local`, accept the quality ceiling.
+
+### 13.5 Cost note (Anthropic backend)
+
+A stored utterance is a small prompt (~few hundred tokens in, ~hundred out); a
+query is larger (rows in context). At `claude-haiku-4-5` rates this is fractions
+of a cent per interaction. The backend logs token usage per call so the user can
+see spend. No batching in Phase 1.
