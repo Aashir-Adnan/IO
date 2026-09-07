@@ -43,6 +43,11 @@
   in Python per call — fine now, revisit before Plan 2 query load.
 - Occasion dedupe is global by lowercased name (two people's "birthday" collapse;
   a later better `date_phrase` never updates the row).
+- Declare the b-tree/GIN/HNSW indexes on the ORM models (currently only in
+  `0001_initial.py`) so `alembic check` / autogenerate is clean and can gate CI.
+  Until then the migration is hand-maintained (conftest now builds the test
+  schema via `alembic upgrade head`, so drift in columns/types/nullability is
+  caught, but not indexes).
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
