@@ -1,0 +1,14 @@
+[
+  {"utterance": "I went out with Nafay to eat at Arcadian for his and Eelian's birthday",
+   "expect": {"people": ["Nafay", "Eelian"], "places": ["Arcadian"], "records": 1, "kind": "event"}},
+  {"utterance": "Mum asked me to pick up groceries tomorrow",
+   "expect": {"people": ["Mum"], "records": 1, "kind": "task", "domain": "home"}},
+  {"utterance": "I take the trash out every Monday",
+   "expect": {"records": 1, "kind": "chore", "recurring": true}},
+  {"utterance": "Had coffee with Sara at Blue Bottle this morning",
+   "expect": {"people": ["Sara"], "places": ["Blue Bottle"], "records": 1, "kind": "event"}},
+  {"utterance": "My manager wants the quarterly report done by Friday",
+   "expect": {"records": 1, "domain": "job"}},
+  {"utterance": "Did chest and triceps at the gym today",
+   "expect": {"records": 1, "domain": "health"}}
+]
