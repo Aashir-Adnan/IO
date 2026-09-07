@@ -20,6 +20,10 @@
   Fix: (a) `ground()` should parse ISO-8601 and common absolute date strings via
   `dateutil.parser` and return ok=True; (b) tighten the extract prompt /
   post-process to strip model-invented ISO timestamps back toward "today".
+- CLI hardening (Plan 3/4 or standalone): `io repl` should catch per-line
+  exceptions and continue instead of dying; persist `stripped` not raw `line`
+  into `Utterance.text` (cli.py); rename `_make_session_factory` (returns a
+  tuple); optionally cache the Orchestrator across repl lines.
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
