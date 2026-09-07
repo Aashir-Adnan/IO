@@ -1,0 +1,124 @@
+import datetime as dt
+
+from tests.conftest import requires_db
+from io_assistant.persist.writer import persist_store
+from io_assistant.resolve.resolver import EntityResolver
+from io_assistant.models_domain import (
+    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord, ExtractedOccasion)
+from io_assistant.db import models as m
+
+
+class StubEmbedder:
+    def __init__(self, mapping=None):
+        self.mapping = mapping or {}
+
+    def embed_one(self, t):
+        return self.mapping.get(t, [0.0] * 768)
+
+    def embed(self, ts):
+        return [self.embed_one(t) for t in ts]
+
+
+NOW = dt.datetime(2026, 9, 7, 18, 0, tzinfo=dt.timezone.utc)
+
+
+def _arcadian() -> ExtractionResult:
+    return ExtractionResult(
+        people=[ExtractedPerson(name="Nafay", confidence=0.95),
+                ExtractedPerson(name="Eelian", confidence=0.9)],
+        places=[ExtractedPlace(name="Arcadian", confidence=0.9)],
+        occasions=[ExtractedOccasion(name="Nafay and Eelian's birthday", date_phrase=None, confidence=0.8)],
+        records=[ExtractedRecord(kind="event", domain="social",
+                                 title="went out to eat", when_phrase="today",
+                                 people=["Nafay", "Eelian"], places=["Arcadian"],
+                                 occasions=["Nafay and Eelian's birthday"],
+                                 attributes={"meal": "dinner"}, confidence=0.9)])
+
+
+@requires_db
+def test_persists_record_with_links(db, config):
+    res = EntityResolver(db, StubEmbedder(), config.resolver)
+    out = persist_store(db, StubEmbedder(), res,
+        utterance_text="I went out with Nafay to eat at Arcadian for his and Eelian's birthday",
+        source="text", captured_at=NOW, extraction=_arcadian(), now=NOW,
+        confidence_gate=config.resolver.confidence_gate_threshold)
+    assert not out.gated and len(out.record_ids) == 1
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.kind == "event" and rec.attributes["meal"] == "dinner"
+    assert rec.occurred_at.date() == dt.date(2026, 9, 7)
+    assert db.query(m.RecordPerson).filter_by(record_id=rec.id).count() == 2
+    assert db.query(m.RecordPlace).filter_by(record_id=rec.id).count() == 1
+    assert db.query(m.RecordOccasion).filter_by(record_id=rec.id).count() == 1
+    assert db.query(m.Person).filter(m.Person.canonical_name.in_(["Nafay", "Eelian"])).count() == 2
+    assert len(out.new_entities) == 3
+
+
+@requires_db
+def test_arbitrary_kind_record(db, config):
+    ext = ExtractionResult(records=[ExtractedRecord(
+        kind="Gym Session", domain="fitness", title="leg day",
+        body="squats 100kg", when_phrase="today", confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="did leg day, squats up to 100", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.kind == "gym_session"
+    assert rec.domain == "other"
+
+
+@requires_db
+def test_low_confidence_gates_and_keeps_only_utterance(db, config):
+    ext = _arcadian()
+    ext.records[0].confidence = 0.3
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="mumble arcadian something", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    assert out.gated and "low confidence" in " ".join(out.gate_reasons).lower()
+    assert db.query(m.Record).count() == 0
+    assert db.get(m.Utterance, out.utterance_id) is not None
+
+
+@requires_db
+def test_confirmed_bypasses_gate(db, config):
+    ext = _arcadian()
+    ext.records[0].confidence = 0.3
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="x", source="text", captured_at=NOW, extraction=ext, now=NOW,
+        confidence_gate=0.6, confirmed=True)
+    assert not out.gated and len(out.record_ids) == 1
+
+
+@requires_db
+def test_ambiguous_entity_gates(db, config):
+    db.add(m.Person(canonical_name="Jonathan", aliases=[], embedding=[1.0] + [0.0] * 767))
+    db.flush()
+    emb = StubEmbedder({"Jon": [1.0] + [0.0] * 767})
+    ext = ExtractionResult(
+        people=[ExtractedPerson(name="Jon", confidence=0.95)],
+        records=[ExtractedRecord(kind="note", domain="social", title="saw Jon",
+                                 when_phrase="today", people=["Jon"], confidence=0.9)])
+    out = persist_store(db, emb, EntityResolver(db, emb, config.resolver),
+        utterance_text="ran into Jon", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    assert out.gated and "ambiguous" in " ".join(out.gate_reasons).lower()
+    assert db.query(m.Record).count() == 0
+
+
+@requires_db
+def test_ambiguous_entity_confirmed_creates_new(db, config):
+    db.add(m.Person(canonical_name="Jonathan", aliases=[], embedding=[1.0] + [0.0] * 767))
+    db.flush()
+    emb = StubEmbedder({"Jon": [1.0] + [0.0] * 767})
+    ext = ExtractionResult(
+        people=[ExtractedPerson(name="Jon", confidence=0.95)],
+        records=[ExtractedRecord(kind="note", domain="social", title="saw Jon",
+                                 when_phrase="today", people=["Jon"], confidence=0.9)])
+    out = persist_store(db, emb, EntityResolver(db, emb, config.resolver),
+        utterance_text="ran into Jon", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6, confirmed=True)
+    assert not out.gated and len(out.record_ids) == 1
+    assert ("person", "Jon") in out.new_entities
+    assert db.query(m.Person).filter_by(canonical_name="Jon").count() == 1
