@@ -1,0 +1,62 @@
+from __future__ import annotations
+import os
+import tomllib
+from pathlib import Path
+from typing import Literal
+from pydantic import BaseModel, ValidationError, field_validator
+
+class ConfigError(Exception):
+    pass
+
+PROFILE_DEFAULTS = {
+    "light":   {"instruct_model": "llama3.2:3b",  "whisper_model": "base"},
+    "quality": {"instruct_model": "qwen2.5:7b",   "whisper_model": "small"},
+}
+
+class BackendConfig(BaseModel):
+    provider: Literal["local", "anthropic", "hybrid"]
+    profile: Literal["light", "quality"]
+    anthropic_model: str
+    ollama_url: str
+    ollama_keep_alive: str
+    instruct_model: str
+    embed_model: str
+    num_thread: int
+
+class ResolverConfig(BaseModel):
+    fuzzy_threshold: int
+    vector_similarity_threshold: float
+    confidence_gate_threshold: float
+
+class Config(BaseModel):
+    database_url: str
+    embedding_dim: int
+    backend: BackendConfig
+    resolver: ResolverConfig
+
+def _repo_root_config() -> Path:
+    return Path(__file__).resolve().parent.parent / "config.toml"
+
+def load_config(path: str | Path | None = None) -> Config:
+    p = Path(path) if path is not None else _repo_root_config()
+    if not p.exists():
+        raise ConfigError(f"config file not found: {p}")
+    try:
+        raw = tomllib.loads(p.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"invalid TOML in {p}: {e}") from e
+
+    # env overrides
+    if env_db := os.environ.get("IO_DATABASE_URL"):
+        raw["database_url"] = env_db
+
+    # profile defaults override the file's instruct_model
+    backend = raw.get("backend", {})
+    profile = backend.get("profile")
+    if profile in PROFILE_DEFAULTS:
+        backend["instruct_model"] = PROFILE_DEFAULTS[profile]["instruct_model"]
+
+    try:
+        return Config.model_validate(raw)
+    except ValidationError as e:
+        raise ConfigError(str(e)) from e
