@@ -1,10 +1,23 @@
 from __future__ import annotations
 
-import json
-
-from io_assistant.models_domain import ExtractionResult
-
-SCHEMA_JSON = json.dumps(ExtractionResult.model_json_schema(), separators=(",", ":"))
+# A hand-written shape hint, NOT ExtractionResult.model_json_schema(). The verbose
+# json-schema dump (with its $defs block) makes small local models like
+# llama3.2:3b echo the schema back instead of extracting - they return
+# {"$defs": {...}} and yield zero entities. This compact hint extracts correctly.
+SCHEMA_JSON = '''Return a JSON object with EXACTLY these keys, each an array (use [] when empty):
+people: [{"name": str, "aliases": [str], "confidence": 0..1}]
+places: [{"name": str, "aliases": [str], "confidence": 0..1}]
+items:  [{"name": str, "aliases": [str], "confidence": 0..1}]
+occasions: [{"name": str, "date_phrase": str|null, "confidence": 0..1}]
+records: [{"kind": str, "domain": str|null, "title": str, "body": str|null,
+           "when_phrase": str|null, "due_phrase": str|null, "recurrence_phrase": str|null,
+           "status": "open"|"done"|"dropped"|null, "assigned_by": str|null,
+           "people": [str], "places": [str], "items": [str], "occasions": [str],
+           "attributes": {}, "confidence": 0..1}]
+kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
+      or a short coined slug like "gym_session" / "job_meeting" / "expense".
+domain: one of social, job, home, health, finance, learning, errand, other.
+Do NOT resolve dates - copy the raw phrase into *_phrase fields.'''
 
 FEWSHOT = '''
 Every `record` needs `kind` and `title`. Use kind "event" for something that

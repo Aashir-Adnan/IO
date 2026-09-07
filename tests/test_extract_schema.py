@@ -4,10 +4,11 @@ from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
 from io_assistant.models_domain import ExtractionResult
 
 
-def test_schema_is_valid_json_and_mentions_records():
-    obj = json.loads(SCHEMA_JSON)
-    assert "properties" in obj
-    assert "records" in json.dumps(obj)
+def test_schema_hint_names_the_top_level_arrays():
+    for key in ("people", "places", "items", "occasions", "records"):
+        assert key in SCHEMA_JSON
+    assert "kind" in SCHEMA_JSON and "domain" in SCHEMA_JSON
+    assert "confidence" in SCHEMA_JSON
 
 
 def test_fewshot_examples_parse_as_extraction_results():
