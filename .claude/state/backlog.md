@@ -29,6 +29,20 @@
   0.8→0.7). Improve `prompts/route.txt` (few-shot examples, tighter definitions),
   grow the fixture, and/or route on `quality`/cloud even in hybrid. This matters
   for hybrid users (routing stays local).
+- Spec §4.5: `persist_store`/resolver never merge an extraction's `aliases` /
+  new `notes` into an already-matched entity row (aliases are write-once at
+  creation). Implement alias/notes enrichment on resolve-hit.
+- `Config` should validate `embedding_dim == db.models.EMBED_DIM` (they can
+  silently diverge; a mismatch fails opaquely at pgvector insert).
+- Gate UX (spec §4.3): replying "no" to a confirmation gate currently gets
+  routed+stored as a fresh utterance; gate message should also carry a one-line
+  "about to store: …" summary (the `_summarize` builder already exists).
+- `Orchestrator.handle` calls `session_factory()` and never closes the session —
+  a connection leak for any real `sessionmaker` (matters for Plan 3 FastAPI).
+- `EntityResolver.resolve` full-scans the entity table and fuzzy-scores every row
+  in Python per call — fine now, revisit before Plan 2 query load.
+- Occasion dedupe is global by lowercased name (two people's "birthday" collapse;
+  a later better `date_phrase` never updates the row).
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
