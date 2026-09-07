@@ -2090,8 +2090,14 @@ git commit -m "feat: EntityResolver (exact/fuzzy/vector/new)"
       - links: `RecordPerson` / `RecordPlace` / `RecordItem` / `RecordOccasion`
         for each resolved name in `rec.people` / `.places` / `.items` / `.occasions`
     - Inserts `Occasion` rows (dedupe by name via resolver-style exact match on
-      the `occasions` table), links to people via `OccasionPerson`.
-    - Commits. On any exception, rolls back and re-raises `PersistError`.
+      the `occasions` table). (No `OccasionPerson` links in Phase 1 —
+      `ExtractedOccasion` carries no people.)
+    - **Transaction shape:** the utterance flush happens first and always
+      survives. The write pass (entity creation + records + links + occasions)
+      runs inside `session.begin_nested()` (a SAVEPOINT); on any exception the
+      savepoint is rolled back (undoing every partial write) and `PersistError`
+      is raised — leaving exactly the utterance row, same as the gate path. The
+      caller owns the outer transaction / commit.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_persist.py`
 
