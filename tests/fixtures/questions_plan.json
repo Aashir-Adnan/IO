@@ -1,0 +1,42 @@
+[
+  {
+    "question": "Where have I hung out with Nafay in the past week?",
+    "raw": {
+      "subqueries": [
+        {"target_type": "record", "kind_filter": ["event"],
+         "entities": ["Nafay"], "time_window": {"start": "last week", "end": "today"},
+         "semantic_hint": "hang out socialise"}
+      ],
+      "answer_shape": "text"
+    },
+    "expect": {
+      "n_subqueries": 1,
+      "kind_filter": ["event"],
+      "entities": ["Nafay"],
+      "window_start_date": "2026-09-01",
+      "window_end_date": "2026-09-08"
+    }
+  },
+  {
+    "question": "What work do I have today?",
+    "raw": {
+      "subqueries": [
+        {"target_type": "record", "domain_filter": ["Job"],
+         "status_filter": ["open"], "time_window": {"start": null, "end": "today"}},
+        {"target_type": "record", "kind_filter": ["Chore"], "status_filter": ["open"]}
+      ],
+      "answer_shape": "markdown"
+    },
+    "expect": {
+      "n_subqueries": 2,
+      "domain_filter_0": ["job"],
+      "kind_filter_1": ["chore"],
+      "answer_shape": "markdown"
+    }
+  },
+  {
+    "question": "hi",
+    "raw": {"subqueries": [], "answer_shape": "banana"},
+    "expect": {"n_subqueries": 1, "answer_shape": "text"}
+  }
+]
