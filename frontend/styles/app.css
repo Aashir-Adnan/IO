@@ -1,0 +1,22 @@
+:root { color-scheme: light dark; --fg: #1a1a1a; --bg: #fff; --muted: #666; --accent: #2563eb; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e8e8e8; --bg: #16171a; --muted: #999; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+#nav { display: flex; gap: 14px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #8883; }
+#nav .brand { font-weight: 700; }
+#nav a { color: var(--fg); text-decoration: none; opacity: .7; }
+#nav a:hover, #nav a.active { opacity: 1; color: var(--accent); }
+#nav .conn { margin-left: auto; font-size: 12px; color: var(--muted); }
+#view { padding: 16px; max-width: 780px; margin: 0 auto; }
+#log { display: flex; flex-direction: column; max-height: 70vh; overflow-y: auto; }
+.msg { margin: 10px 0; padding: 10px 12px; border-radius: 10px; }
+.msg.user { background: #2563eb14; align-self: flex-end; }
+.msg.io { background: #8881; align-self: flex-start; }
+.msg :first-child { margin-top: 0; }
+.msg :last-child { margin-bottom: 0; }
+.chat-input { display: flex; gap: 8px; margin-top: 16px; }
+.chat-input input { flex: 1; padding: 9px 11px; border-radius: 8px; border: 1px solid #8886; background: var(--bg); color: var(--fg); }
+.chat-input button { padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+.stub { color: var(--muted); font-style: italic; }
+pre.mermaid-src { background: #8881; padding: 10px; border-radius: 8px; overflow-x: auto; }
+pre.mermaid-src::before { content: "diagram (" attr(data-note) ")"; display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
