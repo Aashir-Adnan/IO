@@ -1,5 +1,25 @@
 # Completed (newest first)
 
+## 2026-09-08 — Phase 2B: desktop packaging
+Branch `io-phase-2b-packaging` (from `main` post-2C). Spec
+`…-io-phase-2-desktop-packaging-design.md`, plan `…-io-phase-2b-desktop-packaging.md`
+(6 tasks). `scripts/make_icon.py` — `assets/io-logo.png` (user-supplied) →
+`assets/io.ico` (16–256) + `io-512.png` (git-ignored). `io_assistant/service/
+singleton.py` — `acquire_single_instance` (Windows named mutex / POSIX flock) +
+`surface_running_instance` (opens the running `/app/` in the browser). `cli.run()`
+guards on the lock first; `io_assistant/app_entry.py` is the frozen entry point.
+`load_config` search order: explicit → `./config.toml` → `~/.config/io/` →
+bundle (`config_source()`). `packaging/io.spec` — PyInstaller one-dir,
+`name="IO"`, `icon=io.ico`, bundles frontend/config/alembic/migrations/prompts;
+excludes the heavy voice deps (webrtcvad/sounddevice/faster_whisper/… — v1
+packaged app is text+files+gallery, `/voice` degrades to 503). `dev.ps1 build`
++ `install` → Desktop shortcut to `dist\IO\IO.exe`. New dev dep `pyinstaller`.
+**Build verified locally**: `dev.ps1 build` completes, `dist/IO/IO.exe` (20 MB
+exe / 112 MB bundle) launches and stays running; a full clean-environment
+runtime check (Postgres up + migrated, window on a real display, launch-twice
+single-instance) is still a manual step. Full suite 298 pass / 10 skip.
+**All of Phase 2 (A file index + C media + B packaging) is now complete.**
+
 ## 2026-09-08 — Phase 2C: media library & captioning
 Branch `io-phase-2c-media` (from `main` post-2A). Spec
 `…-io-phase-2-media-library-design.md`, plan `…-io-phase-2c-media-library.md`

@@ -10,9 +10,12 @@
   - ~~Spec C — media library & captioning~~ — DONE 2026-09-08 on branch
     `io-phase-2c-media` (292 pass). Not merged. See completed.md. Follow-ups:
     ffmpeg video-frame thumbnails; HEIC via `pillow-heif`; EXIF GPS → `Place`.
-  - Spec B `…-io-phase-2-desktop-packaging-design.md` — `IO.exe` (PyInstaller),
-    logo→`.ico`, single-instance lock. Independent. **Needs `assets/io-logo.png`
-    from the user.**
+  - ~~Spec B — desktop packaging~~ — DONE 2026-09-08 on branch
+    `io-phase-2b-packaging` (298 pass; build verified locally). See completed.md.
+    Follow-ups: run a full clean-env runtime check on Windows (`dev.ps1 up`
+    first — the frozen app does NOT migrate; then double-click `dist\IO\IO.exe`,
+    launch twice); a blocking "DB unreachable" dialog; bundling voice deps or a
+    separate voice add-on; macOS/Linux packaging; code signing; auto-update.
 
 - ~~Plan 6: Nocturne desktop client~~ — DONE 2026-09-08 (see completed.md).
   Phase 1.5 complete.

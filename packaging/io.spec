@@ -53,7 +53,14 @@ if __name__ != "__spec_probe__":
         hiddenimports=HIDDEN_IMPORTS,
         hookspath=[],
         runtime_hooks=[],
-        excludes=["reportlab", "pytest"],
+        # v1 packaged app is text + files + gallery. Voice (io listen, POST
+        # /voice) needs the full uv environment — these heavy/native deps are
+        # lazy-imported and excluded from the bundle; /voice degrades to 503.
+        excludes=[
+            "reportlab", "pytest", "pyinstaller",
+            "webrtcvad", "webrtcvad_wheels", "sounddevice", "pynput",
+            "faster_whisper", "piper", "ctranslate2", "onnxruntime", "torch",
+        ],
         noarchive=False,
     )
     pyz = PYZ(a.pure)

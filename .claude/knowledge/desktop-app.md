@@ -110,6 +110,39 @@ Vendored static ES modules, no build step, **no CDN** (local-first —
   + `voice/loop.py:VoiceLoop`) — capture stays local, transcribe + synth are the
   server.
 
+## Packaging (Phase 2B)
+
+- `scripts/make_icon.py` — `assets/io-logo.png` → `assets/io.ico`
+  (16/32/48/64/128/256) + `assets/io-512.png`; both generated files are
+  git-ignored. `make_icon(src, ico_out, png_out)`.
+- `io_assistant/service/singleton.py` — `acquire_single_instance(name=
+  "io-assistant")` returns a held `SingleInstance` or `None` (Windows: `Global\\`
+  named mutex; POSIX: `flock` on `~/.local/share/io/<name>.lock`).
+  `surface_running_instance(config)` opens the running app's `/app/` URL in the
+  browser and prints a line — never starts a service.
+- `cli.run()` calls `acquire_single_instance()` first; `None` →
+  `surface_running_instance()` + `SystemExit(0)`; else the window runs inside
+  `with inst:`. `io_assistant/app_entry.py` is the frozen entry point (thin
+  wrapper over `cli.run`).
+- `load_config` search order: explicit path → `./config.toml` →
+  `~/.config/io/config.toml` → the bundled repo-root `config.toml`
+  (`config.py:config_source()`). So a frozen user can override the bundled
+  default without touching the read-only bundle.
+- `packaging/io.spec` — PyInstaller **one-dir**, windowed, `name="IO"`,
+  `icon=assets/io.ico`, entry `io_assistant/app_entry.py`. Bundles `frontend/`,
+  `config.toml`, `alembic.ini`, `db/migrations/`, `prompts/`, `assets/io-512.png`.
+  Module-level `ENTRY` / `DATAS` are read by `tests/test_packaging_spec.py`
+  (guarded so `runpy` can import it without PyInstaller globals). **Not**
+  bundled: PostgreSQL, the Whisper/Piper models.
+- `dev.ps1 build` → generate icon + `pyinstaller packaging/io.spec` → `dist/IO/
+  IO.exe`. `dev.ps1 install` → Desktop shortcut to `dist\IO\IO.exe` (runs
+  `build` if the exe is missing).
+- **The PyInstaller build is a manual, Windows-only step for v1.**
+  Hidden-import gaps are found by running `dev.ps1 build` once and adding the
+  missing module to `HIDDEN_IMPORTS` in `io.spec`. macOS/Linux packaging, code
+  signing, `.msi`, auto-update, and a blocking "DB unreachable" dialog are
+  backlog.
+
 ## Deferred
 
 State 1d task runner (agent loop); external-source provenance; entity-file

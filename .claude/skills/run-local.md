@@ -11,7 +11,9 @@ Postgres, checks/starts Ollama, migrates, and runs the `io` service.
 ```
 .\dev.ps1 up          # Postgres + Ollama + migrate + io service (background)
 .\dev.ps1 up -Window  #  ... open the desktop window; closing it shuts the stack down
-.\dev.ps1 install     # put a Desktop "IO" shortcut = double-click to launch, close window to stop
+.\dev.ps1 build       # generate the icon + PyInstaller one-dir bundle (dist\IO\IO.exe)
+.\dev.ps1 install     # Desktop "IO" shortcut -> dist\IO\IO.exe (runs build if needed;
+                      #   a second launch just opens the running window in the browser)
 .\dev.ps1 app         # open the UI (http://localhost:8765/app/) in a browser
 .\dev.ps1 listen      # voice mode
 .\dev.ps1 status      # what's running

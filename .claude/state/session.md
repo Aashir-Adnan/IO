@@ -1,34 +1,36 @@
 # Current session
 
-**Phase 2A (file index)** — merged to `main` (`20c96d5`), pushed to origin.
-`main` and `origin/main` now carry Phase 1 → 1.5 → 2A.
+**Phase 2 COMPLETE** — file index (2A) + media library (2C) both merged to
+`main` and pushed (`origin/main` = `f87fa77`). Desktop packaging (2B) done on
+branch **`io-phase-2b-packaging`** (NOT merged yet). Full suite **298 pass /
+10 skip**.
 
-**Phase 2C (media library & captioning) COMPLETE** — on branch
-`io-phase-2c-media` (from `main`, NOT merged). Full suite **292 pass / 9 skip**.
-Spec `…-io-phase-2-media-library-design.md`, plan `…-io-phase-2c-media-library.md`
-(10 tasks, all done). Knowledge: `.claude/knowledge/file-index.md` (Media section).
+- 2A `io_assistant/files/` — AccessGate, walk/extract/chunk, FileIndex,
+  FileIndexer (hash-gated), FileSearcher (FTS+vector+entity+graph), `file`
+  router intent, `/files*` routes, `io files` CLI, Files rail view. Migs 0004.
+- 2C media — `0005` (`thumb_path` + `file_captions`), `thumbs.py`,
+  `gallery.open_folder` → `GalleryCard`, `caption.apply_caption` (user captions
+  → entity links + gate), `open` command action, `/files/{raw,thumb,open,
+  caption,caption/confirm,transcribe}`, `frontend/views/gallery.js`.
+- 2B packaging — `scripts/make_icon.py`, `singleton.py` (single-instance),
+  `cli.run()` guard + `app_entry.py`, `load_config` search order,
+  `packaging/io.spec` (PyInstaller one-dir), `dev.ps1 build`/`install`.
+  Build verified: `dist/IO/IO.exe` builds + launches.
 
-Shipped: migration `0005` (`thumb_path` + `file_captions`); `thumbs.py`
-(Pillow); media branch in `index.py`; `open` command action + `resolve_folder`;
-`gallery.open_folder` → `GalleryCard`; `caption.apply_caption` (user captions →
-entity links, gate on ambiguity, records ignored, caption embedded so media is
-searchable); orchestrator `_file_open` → `gallery` card; `/files/{raw,thumb,
-open,caption,caption/confirm,transcribe}` routes; `frontend/views/gallery.js`
-(grid + img/video player + caption box + entity chips).
-
-**Verified here:** full pytest suite, socket guard green, `node --check` on new
-JS, Range request → 206. **Not verified:** the gallery in a running browser;
-video playback with a real container (fixture `clip.mp4` is a stub); voice
-captions end-to-end (needs Whisper).
+Knowledge: `.claude/knowledge/file-index.md` (Media section),
+`.claude/knowledge/desktop-app.md` (Packaging section).
 
 **Next:**
-1. **Merge decision** — `io-phase-2c-media` → `main` (finishing-a-development-
-   branch) once reviewed.
-2. **Spec B — desktop packaging** (`IO.exe`, `.ico`, single-instance).
-   Independent. **Blocked on `assets/io-logo.png` from the user.** Plan not yet
-   written.
-3. Open-source readiness (on hold per the user): default `provider = "local"`,
-   verify local backend end-to-end, LICENSE, README, `.github/` CI, make repo
+1. **Merge `io-phase-2b-packaging` → `main`** (finishing-a-development-branch;
+   same publish→ff-merge→push flow as 2A/2C).
+2. **Manual runtime check of `IO.exe`** on a clean Windows desktop:
+   `.\dev.ps1 up` first (the frozen app does NOT run migrations), then
+   `.\dev.ps1 build` + double-click `dist\IO\IO.exe`; launch twice to confirm
+   single-instance; add any missing module to `HIDDEN_IMPORTS` in `io.spec`.
+   (Local smoke: exe launched + stayed up, but `/health` didn't answer in 12s —
+   needs a clean env with Postgres migrated.)
+3. **Open-source readiness** (was on hold): default `provider = "local"`, verify
+   the local backend end-to-end, LICENSE, README, `.github/` CI, make the repo
    public (user clicks that).
 
 Tests: `IO_TEST_DATABASE_URL='postgresql+psycopg://io:io@localhost:5432/io_test'
