@@ -15,7 +15,7 @@ from io_assistant.files.paths import AccessGate
 
 __all__ = [
     "FileCommand", "classify_file_command",
-    "ResolveResult", "resolve_register_target",
+    "ResolveResult", "resolve_register_target", "resolve_folder",
 ]
 
 _PATH_RE = re.compile(r"([A-Za-z]:\\[^\"\n]+|/[^\"\n]+|~[/\\][^\"\n]+)")
@@ -25,13 +25,16 @@ _REGISTER_RE = re.compile(
 )
 _AFTER_VERB_RE = re.compile(
     r"\b(?:remember|index|register|watch|keep track of)\b\s+(.*)", re.I)
+_OPEN_RE = re.compile(r"\b(open|show me|show|browse|go to|pull up)\b\s+(.*)", re.I)
+_FOLDERISH_RE = re.compile(
+    r"\b(folder|album|gallery|photos?|pictures?|pics?|videos?|notes?|trip)\b", re.I)
 _STOPWORDS = {"the", "my", "a", "folder", "directory", "called", "named",
               "in", "under", "at", "of", "files", "file"}
 
 
 @dataclass
 class FileCommand:
-    action: Literal["register", "search"]
+    action: Literal["register", "search", "open"]
     path: str | None = None
     phrase: str | None = None
 
@@ -47,6 +50,11 @@ def classify_file_command(text: str) -> FileCommand:
             if am:
                 phrase = am.group(1).strip().rstrip(".?!")
         return FileCommand("register", path=path, phrase=phrase)
+    om = _OPEN_RE.search(t)
+    if om and _FOLDERISH_RE.search(t):
+        rest = om.group(2).strip().rstrip(".?!")
+        rest = re.sub(r"^(the|my)\s+", "", rest, flags=re.I)
+        return FileCommand("open", path=path, phrase=rest)
     return FileCommand("search", path=path)
 
 
@@ -88,6 +96,58 @@ def resolve_register_target(phrase: str, session, gate: AccessGate,
         return ResolveResult("none")
     scored: list[tuple[float, Path]] = []
     for d in _candidate_dirs(session, gate, config):
+        name = d.name.lower()
+        score = fuzz.token_set_ratio(" ".join(kws), name)
+        if all(k in name for k in kws):
+            score = max(score, 95)
+        if score >= 80:
+            scored.append((score, d))
+    scored.sort(key=lambda s: s[0], reverse=True)
+    if not scored:
+        return ResolveResult("none")
+    if len(scored) == 1 or scored[0][0] - scored[1][0] >= 15:
+        return ResolveResult("one", path=scored[0][1])
+    return ResolveResult("many", candidates=[p for _, p in scored[:5]])
+
+
+def _walk_dirs(root: Path, gate: AccessGate, *, max_depth: int = 3,
+               cap: int = 400) -> list[Path]:
+    out: list[Path] = []
+    root = root.resolve()
+    for dirpath, dirnames, _ in os.walk(root):
+        try:
+            depth = len(Path(dirpath).relative_to(root).parts)
+        except ValueError:
+            depth = 0
+        if depth >= max_depth:
+            dirnames[:] = []
+        dirnames[:] = [d for d in dirnames
+                       if not gate.is_excluded(Path(dirpath) / d)]
+        for d in dirnames:
+            out.append(Path(dirpath) / d)
+            if len(out) >= cap:
+                return out
+    return out
+
+
+def resolve_folder(phrase: str, session, gate: AccessGate,
+                   config: FilesConfig) -> ResolveResult:
+    kws = _keywords(phrase or "")
+    if not kws:
+        return ResolveResult("none")
+    cands: list[Path] = []
+    for p in session.execute(
+        select(m.FileNode.path).where(m.FileNode.kind == "dir")
+    ).scalars():
+        cands.append(Path(p))
+    for r in gate.roots:
+        cands += _walk_dirs(r, gate)
+    seen: dict[str, Path] = {}
+    for p in cands:
+        seen.setdefault(gate.key(p), p)
+
+    scored: list[tuple[float, Path]] = []
+    for d in seen.values():
         name = d.name.lower()
         score = fuzz.token_set_ratio(" ".join(kws), name)
         if all(k in name for k in kws):
