@@ -1,5 +1,28 @@
 # Completed (newest first)
 
+## 2026-09-08 — Plan 6: Nocturne desktop client
+`docs/superpowers/plans/2026-09-08-io-phase-6-nocturne-client.md`, 10 tasks.
+Spec: `…-phase-1.5-conversational-shell.md` §2/§7. `frontend/` rebuilt in the
+Nocturne design system: vendored Inter + IBM Plex Mono woff2 + inlined Phosphor
+SVGs (`vendor/icons.js`) + `tokens.css` (no CDN, under byte budget). Hand-rolled
+`createStore` + `Api` client (REST + auto-reconnect WS). Shell = titlebar +
+rail + drawer + `#view`; three views — Standby (greeting/stats/orb/chips/
+composer), Listening (mic-live orb, `WavRecorder` → `POST /voice`, VAD/gain),
+Conversation (`#thread` + compact composer + Memory Inspector slot; record/
+tasklist/sources cards). `Orb` component, 4 modes. `revealText` simulated typing
+(`min_think_ms` hold → `typing_cps`, accelerating; instant-complete `cancel()`),
+paced from `config.ui`. Conversations drawer (grouped Today/Yesterday/Earlier,
+new + history hydrate). Desktop shell: `open_window(url, *, fullscreen)` —
+geometry persisted to `~/.local/share/io/window.json`, restored on open;
+fullscreen first-run; native menu (New Conversation / Reload / Toggle
+Fullscreen). Tests: `test_frontend_assets` (no external URLs, font budget,
+`node --check`), pure-JS `markdown`/`typing`/`recorder` via node,
+`test_frontend_smoke.py` (`-m ui`, `IO_UI_TESTS=1`) Playwright headless against
+the `ui_page` stub-server fixture + `tests/fixtures/ui/*.json`. Full suite
+199 pass / 8 opt-in skipped (3 new ui skips — Playwright not installed here;
+the `ui` marker + one-time `playwright install chromium` are documented).
+**Phase 1.5 complete.**
+
 ## 2026-09-08 — Plan 5: conversational backend
 `docs/superpowers/plans/2026-09-08-io-phase-5-conversational-backend.md`, 10
 tasks. Spec: `…-phase-1.5-conversational-shell.md`. `0003` conversations/messages

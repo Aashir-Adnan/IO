@@ -19,21 +19,61 @@ The Orchestrator runs behind a local FastAPI service. `io serve` is headless;
     replies `{"type": "answer", ...}` or `{"type": "error", "message": ...}`.
     One frame per answer — token streaming is deferred.
 - `runner.py` — `run_service(config, *, block=True)` (uvicorn; `block=False`
-  returns `(server, thread)` after `/health` goes green) and `open_window(url)`
-  (lazy `import webview`; raises a clear RuntimeError with a browser fallback if
-  pywebview is unavailable).
-- `schemas.py` — `UtteranceIn` / `UtteranceOut` / `HealthOut`.
+  returns `(server, thread)` after `/health` goes green) and
+  `open_window(url, *, title="IO", fullscreen=True)` (lazy `import webview`;
+  clear RuntimeError + browser fallback if pywebview is unavailable). Window
+  geometry (size/pos) persists to `~/.local/share/io/window.json` on close and
+  is restored on open; a first run with no saved geometry opens fullscreen when
+  `config.ui.fullscreen`. Native menu: File→New Conversation, View→Reload /
+  Toggle Fullscreen. `min_size=(960, 640)`, default `1180×760`, `text_select`.
+- `schemas.py` — `UtteranceIn` / `TurnResponse` / `VoiceOut` / `HealthOut` /
+  `VoiceHealthOut` / `MessageOut` / `ConversationOut` / `ConversationSummary` /
+  `NewConversationOut` (`UtteranceOut` kept as a deprecated alias).
 
-## Frontend — `frontend/` (served at `/app`)
+## Frontend — `frontend/` (Nocturne client, served at `/app/`)
 
 Vendored static ES modules, no build step, **no CDN** (local-first —
-`tests/test_frontend_assets.py` fails on any non-local `http(s)://`).
-- `app.js` — hash router (`#/chat` active; `#/timeline` `#/sources` `#/review`
-  stubbed), WS client with auto-reconnect, `store.transcript`, `send()`.
-- `components/message.js` — `renderMessage(role, text, shape)`; markdown via
-  `vendor/markdown.js` (hand-rolled: headings/lists/bold/italic/code/fences/
-  links; a ```mermaid fence renders as a labelled `<pre>` — real Mermaid
-  rendering needs a deliberate vendored lib, tracked in backlog).
+`tests/test_frontend_assets.py` fails on any non-local `http(s)://` or
+`@import url(http…)`; fonts must stay under the byte budget).
+
+- `tokens.css` — Nocturne `:root` tokens (`--color-bg #161826`, blurple accent
+  `#9184d9` used as line + glow never flood, radii 4/8/14) + 5 `@font-face`
+  (local woff2 in `vendor/fonts/`: Inter 300/400/500, IBM Plex Mono 400/500).
+  `app.css` — every component style.
+- `vendor/` — `icons.js` (inlined Phosphor SVG paths + `icon(name, {size})`),
+  `markdown.js` (hand-rolled: headings/lists/bold/italic/code/fences/tables/
+  quotes/links; non-local hrefs degrade to text; ```mermaid → labelled `<pre>`),
+  `recorder.js` (`WavRecorder` + pure `encodeWav()` 16 kHz downsample).
+- `state.js` — `createStore(initial)` (`get`/`set`/`update`/`subscribe`, shallow
+  merge). `api.js` — `Api(base)` REST + `connectWs(onFrame)` (auto-reconnect).
+- `app.js` — shell: titlebar + left rail (`NAV`) + drawer + `#view`. `VIEWS =
+  {standby, talk, conversation}`; rail "Conversation" toggles the drawer, stub
+  nav lands on the transcript. `speak(audio_b64)` decodes base64 → `Audio`;
+  Esc / view-change stop playback. `window.__ctx` is exposed for the DOM smoke.
+- `views/standby.js` (greeting, stat row, big orb, surfaced chips, composer),
+  `views/listening.js` (mic-live orb, `WavRecorder` → `POST /voice`, VAD/gain
+  readouts, ⌥Space / Esc), `views/conversation.js` (`#thread` + compact composer
+  + `#inspector` slot; `sendTurn()` / `appendUserLine()` / `renderAssistant()`).
+- `components/` — `orb.js` (`Orb(el, {mode,size})`, modes standby/listening/
+  thinking/speaking, `setLevel`), `composer.js` (auto-grow textarea, Enter=send),
+  `bubble.js`, `card.js` (`record` / `tasklist` / `sources`), `inspector.js`
+  (Memory Inspector panel), `drawer.js` (conversation list grouped Today/
+  Yesterday/Earlier, `+ New`, history hydrate).
+- `typing.js` — `revealText(el, text, {cps, minThinkMs})`: hold for
+  `min_think_ms`, then type at `typing_cps` (accelerates past 240 chars);
+  returns `cancel()` that completes instantly. Pacing comes from
+  `config.ui` (`typing_cps`, `min_think_ms`).
+
+## Tests
+
+- `tests/test_frontend_assets.py` — files exist, no external URLs, font budget,
+  `node --check` on every JS when node is present, `/app/` served.
+- `tests/test_frontend_{markdown,typing,recorder}.py` — pure-JS behaviour run
+  through `node` (imports use `Path.as_uri()` for Windows).
+- `tests/test_frontend_smoke.py` (`-m ui`, `IO_UI_TESTS=1`) — Playwright Chromium
+  headless against the `ui_page` fixture (stub server serving `frontend/` +
+  canned `tests/fixtures/ui/*.json`). One-time: `uv run playwright install
+  chromium`. Skips cleanly when opt-out / playwright / chromium absent.
 
 ## Conversation layer (Phase 1.5)
 

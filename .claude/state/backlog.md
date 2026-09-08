@@ -1,13 +1,16 @@
 # Backlog (highest priority on top)
 
-- Plan 6: Nocturne desktop client — `docs/superpowers/plans/2026-09-08-io-phase-6-nocturne-client.md`
-  (10 tasks). Vendor Inter + Plex Mono + Phosphor + tokens; shell; the orb;
-  Standby / Listening / Conversation+Inspector views; simulated typing;
-  conversations drawer; fullscreen window. Visual source of truth: `docs/design/`.
+- ~~Plan 6: Nocturne desktop client~~ — DONE 2026-09-08 (see completed.md).
+  Phase 1.5 complete.
 - Phase 1.5 deferred: state 1d task runner (agent loop + approval gates + live
   log + telemetry); external-source provenance (Calendar/Messages); entity-file
   browser (Timeline/Sources/Review still stubs); real `/ws` token streaming;
   Kokoro `Speaker` adapter (`[voice].provider`).
+- Plan 6 follow-ups: run the Playwright DOM smoke on a machine with chromium
+  (`uv run playwright install chromium`; `IO_UI_TESTS=1 uv run pytest -m ui`);
+  exercise the pywebview window + native menu + geometry persistence on a real
+  display; real Mermaid rendering (vendored lib); the `talk`/Listening view mic
+  path needs a real mic to verify.
 
 - ~~Live-run findings 2026-09-08~~ — all three FIXED 2026-09-08:
   router prompt + held-out fixture (21/21 on Haiku); bare day words snap to

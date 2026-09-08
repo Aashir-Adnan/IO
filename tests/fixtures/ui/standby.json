@@ -1,0 +1,8 @@
+{
+  "greeting_name": "Aashir",
+  "stats": { "memories": 42, "recall_ms": 180, "clock": "2026-09-08T15:00:00+00:00" },
+  "chips": [
+    { "icon": "list-checks", "text": "2 tasks today", "record_id": null },
+    { "icon": "users-three", "text": "Nafay's birthday in 3 days", "record_id": null }
+  ]
+}

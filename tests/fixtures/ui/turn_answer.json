@@ -1,0 +1,13 @@
+{
+  "kind": "answer",
+  "intent": "query",
+  "text": "You've been at **Granjur Technologies** for about 2 years — since September 2024.",
+  "shape": "text",
+  "cards": [
+    { "type": "sources", "record_ids": [40], "count": 1, "labels": ["JOB · Granjur Technologies"] }
+  ],
+  "pending_token": null,
+  "conversation_id": 7,
+  "message_id": 42,
+  "audio_b64": null
+}

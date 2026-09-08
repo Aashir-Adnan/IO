@@ -76,13 +76,23 @@ uv run io run                  # service + desktop window (/app)
 ## Voice (Plan 4)
 
 ```
-# one-time: download a Piper voice (female US English)
-uv run python -m piper.download_voices en_US-amy-medium --data-dir $HOME\.local\share\io\piper
+# one-time: download the default Piper voice (natural female US English)
+uv run python -m piper.download_voices en_US-hfc_female-medium --data-dir $HOME\.local\share\io\piper
 
 uv run io serve                # in one shell
 uv run io listen               # in another — hotkey to talk, hear the answer
 uv run io listen --passive     # hands-free VAD mode
 ```
+
+## Frontend DOM smoke (opt-in)
+
+```
+uv run playwright install chromium          # one-time
+$env:IO_UI_TESTS=1; uv run pytest -m ui -q   # Playwright headless against a stub server
+```
+Skips cleanly when `IO_UI_TESTS` is unset or playwright/chromium are absent.
+Pure-JS frontend tests (markdown/typing/recorder) run in the normal suite via
+`node` when it's on PATH.
 
 ## Go / no-go
 

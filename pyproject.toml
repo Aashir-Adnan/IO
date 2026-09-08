@@ -37,6 +37,7 @@ markers = [
     "ollama: requires a running Ollama (set IO_OLLAMA_TESTS=1)",
     "anthropic: requires ANTHROPIC_API_KEY (set IO_ANTHROPIC_TESTS=1)",
     "voice: requires local Whisper/Piper models (set IO_VOICE_TESTS=1)",
+    "ui: Playwright DOM smoke (set IO_UI_TESTS=1; needs `uv run playwright install chromium`)",
 ]
 
 [build-system]

@@ -1,4 +1,5 @@
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -193,3 +194,142 @@ class FakeTranscriber:
 @pytest.fixture
 def fake_transcriber():
     return FakeTranscriber()
+
+
+# --------------------------------------------------------------------------- #
+# ui_page — opt-in Playwright DOM smoke (IO_UI_TESTS=1)
+# --------------------------------------------------------------------------- #
+
+_UI_ROOT = Path(__file__).resolve().parent.parent / "frontend"
+_UI_FIX = Path(__file__).resolve().parent / "fixtures" / "ui"
+
+
+def _ui_fixture(name: str):
+    import json as _json
+
+    return _json.loads((_UI_FIX / name).read_text())
+
+
+def _make_ui_server():
+    import json as _json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    canned_get = {
+        "/standby": lambda: _ui_fixture("standby.json"),
+        "/voice/health": lambda: _ui_fixture("voice_health.json"),
+        "/conversations": lambda: _ui_fixture("conversations.json"),
+        "/conversation": lambda: _ui_fixture("conversation.json"),
+        "/health": lambda: {"ok": True, "database": True, "backend_provider": "fake"},
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # silence
+            pass
+
+        def _send_json(self, obj, status=200):
+            body = _json.dumps(obj).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            if path in canned_get:
+                return self._send_json(canned_get[path]())
+            if path.startswith("/entity/"):
+                return self._send_json(
+                    {"etype": "person", "id": 1, "name": "Nafay",
+                     "subtitle": "FRIEND · 3 NOTES", "confidence": 0.82, "facts": []}
+                )
+            rel = path.lstrip("/") or "index.html"
+            if path in ("/", "/app", "/app/"):
+                rel = "index.html"
+            fp = (_UI_ROOT / rel).resolve()
+            if not str(fp).startswith(str(_UI_ROOT.resolve())) or not fp.is_file():
+                self.send_response(404)
+                self.end_headers()
+                return
+            ctype = {
+                ".js": "text/javascript", ".css": "text/css",
+                ".html": "text/html", ".woff2": "font/woff2",
+                ".json": "application/json",
+            }.get(fp.suffix, "application/octet-stream")
+            data = fp.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            path = self.path.split("?", 1)[0]
+            if path == "/conversation":
+                return self._send_json({"conversation_id": 99})
+            if path == "/utterance":
+                return self._send_json(_ui_fixture("turn_answer.json"))
+            if path == "/voice":
+                out = dict(_ui_fixture("turn_answer.json"))
+                out.update(transcript="how long at granjur", transcript_confidence=0.9)
+                return self._send_json(out)
+            self._send_json({}, status=404)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+
+@pytest.fixture
+def ui_page():
+    if os.environ.get("IO_UI_TESTS") != "1":
+        pytest.skip("UI smoke is opt-in: set IO_UI_TESTS=1")
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        pytest.skip("playwright not installed (uv add --group dev playwright)")
+
+    srv, base = _make_ui_server()
+    pw = sync_playwright().start()
+    try:
+        browser = pw.chromium.launch()
+    except Exception as e:  # chromium not installed
+        pw.stop()
+        srv.shutdown()
+        pytest.skip(f"chromium unavailable: {e} — run `uv run playwright install chromium`")
+
+    ctx = browser.new_context(permissions=["microphone"])
+    page = ctx.new_page()
+
+    class UiPage:
+        def __init__(self):
+            self.page = page
+            self.base = base
+
+        def open(self):
+            page.goto(f"{base}/app/")
+            page.wait_for_function("window.__ctx !== undefined")
+            return self
+
+        def goto_view(self, name):
+            page.evaluate("v => window.__ctx.store.set({ view: v })", name)
+            page.wait_for_timeout(50)
+
+        def send(self, text):
+            page.evaluate("t => window.__ctx.store.get()", None)
+
+        def eval(self, js, *arg):
+            return page.evaluate(js, *arg) if arg else page.evaluate(js)
+
+        def wait_for(self, selector, **kw):
+            page.wait_for_selector(selector, **kw)
+
+    up = UiPage()
+    try:
+        yield up
+    finally:
+        ctx.close()
+        browser.close()
+        pw.stop()
+        srv.shutdown()
