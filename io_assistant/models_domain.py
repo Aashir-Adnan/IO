@@ -126,7 +126,25 @@ class FilesCard(BaseModel):
     searched: int = 0
 
 
-Card = RecordCard | TaskListCard | SourcesCard | FilesCard
+class GalleryItem(BaseModel):
+    path: str
+    media_kind: str
+    thumb_url: str | None = None
+    raw_url: str
+    has_thumb: bool = False
+    caption: str | None = None
+    entities: list[EntityRef] = Field(default_factory=list)
+    captured_at: datetime | None = None
+
+
+class GalleryCard(BaseModel):
+    type: Literal["gallery"] = "gallery"
+    folder_path: str
+    count: int = 0
+    items: list[GalleryItem] = Field(default_factory=list)
+
+
+Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard
 
 
 def normalize_kind(raw: str) -> str:
