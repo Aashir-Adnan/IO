@@ -54,10 +54,42 @@ class Orchestrator:
         confirmed: bool = False,
         pending: PendingStore | None = None,
     ) -> HandleResult:
+        """Acquire one session for the whole call, commit it (the verbatim
+        utterance and any records), and always close it. A swallowed
+        ``PersistError`` still returns normally, so the flushed utterance row
+        is committed even when the write pass failed."""
+        session = self._session_factory()
+        try:
+            result = self._handle_in_session(
+                session,
+                text,
+                source=source,
+                captured_at=captured_at,
+                confirmed=confirmed,
+                pending=pending,
+            )
+            session.commit()
+            return result
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _handle_in_session(
+        self,
+        session,
+        text: str,
+        *,
+        source: str,
+        captured_at: datetime | None,
+        confirmed: bool,
+        pending: PendingStore | None,
+    ) -> HandleResult:
         if pending is not None:
             # Replay of a gated store: no Route, no Extract, no new utterance.
             return self._store(
-                self._session_factory(),
+                session,
                 text=pending.text,
                 source=pending.source,
                 captured_at=pending.captured_at,
@@ -86,7 +118,6 @@ class Orchestrator:
             )
 
         # intent == "store"
-        session = self._session_factory()
         extraction = self._extractor.run(text, now)
 
         if extraction is None:

@@ -167,6 +167,55 @@ def test_write_failure_keeps_utterance_and_does_not_raise(
 
 
 @requires_db
+def test_handle_commits_utterance_even_when_write_fails(
+    db, config, fake_backend, monkeypatch
+):
+    """handle() owns the session: after a failed write pass it still commits the
+    verbatim utterance. A second session on the same connection (i.e. not the
+    Orchestrator's, which handle() has already closed) sees the row."""
+    from sqlalchemy.orm import sessionmaker
+
+    fake_backend.set_intent("store")
+    fake_backend.set_extraction(
+        ExtractionResult(
+            records=[
+                ExtractedRecord(
+                    kind="event", title="doomed", when_phrase="today",
+                    confidence=0.9,
+                )
+            ]
+        )
+    )
+
+    class HalfEmbedder:
+        def embed_one(self, t):
+            if "doomed" in t:
+                raise RuntimeError("embedding backend down")
+            return [0.0] * 768
+
+        def embed(self, ts):
+            return [[0.0] * 768 for _ in ts]
+
+    import io_assistant.orchestrator as orch
+
+    monkeypatch.setattr(orch, "Embedder", lambda cfg: HalfEmbedder())
+
+    factory = sessionmaker(bind=db.connection(), future=True, expire_on_commit=False)
+    o = Orchestrator(config, session_factory=factory, backend=fake_backend)
+    text = "a sentence that will not store"
+    res = o.handle(text, captured_at=NOW)
+    assert res.stored is None and "kept a note" in res.message
+
+    check = factory()
+    try:
+        rows = check.query(m.Utterance).filter_by(text=text).all()
+        assert len(rows) == 1 and rows[0].resolved_intent == "store"
+        assert check.query(m.Record).filter_by(title="doomed").count() == 0
+    finally:
+        check.close()
+
+
+@requires_db
 def test_confirm_replays_without_reextraction(db, config, fake_backend, monkeypatch):
     """Confirming a gated store replays the held extraction: no re-route, no
     re-extract, and no second utterance row."""

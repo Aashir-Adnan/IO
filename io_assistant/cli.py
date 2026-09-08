@@ -9,23 +9,15 @@ from io_assistant.orchestrator import Orchestrator, PendingStore
 app = typer.Typer(help="io — personal knowledge assistant")
 
 
-def _make_session_factory(config):
-    engine = make_engine(config.database_url)
-    return engine, make_session_factory(engine)
-
-
 @app.command()
 def store(text: str) -> None:
     """Store an utterance."""
     config = load_config()
-    engine, factory = _make_session_factory(config)
-    session = factory()
-    orch = Orchestrator(config, session_factory=lambda: session)
+    engine = make_engine(config.database_url)
+    factory = make_session_factory(engine)
     try:
-        res = orch.handle(text)
-        session.commit()
+        res = Orchestrator(config, session_factory=factory).handle(text)
     finally:
-        session.close()
         engine.dispose()
     print(res.message)
 
@@ -34,7 +26,9 @@ def store(text: str) -> None:
 def repl() -> None:
     """Interactive loop."""
     config = load_config()
-    engine, factory = _make_session_factory(config)
+    engine = make_engine(config.database_url)
+    factory = make_session_factory(engine)
+    orch = Orchestrator(config, session_factory=factory)
     # A gated store held verbatim (utterance id + extraction) for replay.
     pending_store: PendingStore | None = None
     try:
@@ -52,18 +46,12 @@ def repl() -> None:
 
             is_confirm = pending_store is not None and stripped.lower() in {"y", "yes"}
 
-            session = factory()
-            try:
-                orch = Orchestrator(config, session_factory=lambda s=session: s)
-                if is_confirm:
-                    # Replay the held extraction — no re-route, no re-extract,
-                    # no second utterance row.
-                    res = orch.handle(pending_store.text, pending=pending_store)
-                else:
-                    res = orch.handle(line)
-                session.commit()
-            finally:
-                session.close()
+            if is_confirm:
+                # Replay the held extraction — no re-route, no re-extract,
+                # no second utterance row.
+                res = orch.handle(pending_store.text, pending=pending_store)
+            else:
+                res = orch.handle(stripped)
 
             print(res.message)
             pending_store = res.pending
