@@ -5,15 +5,11 @@
   `test_extractor_against_fixtures` partly measures shot reproduction. Add
   several genuinely held-out utterances (varied phrasing, multi-record, negation)
   and re-baseline the pass-rate threshold.
-- Deferred minors from Plan 1 review (see ledger): unused `field_validator`
-  import in config.py; `aliases` columns NOT NULL without server_default;
-  redundant PK-leading-column indexes on link tables; malformed-Ollama-JSON
-  (KeyError) not wrapped in LocalBackendError; `EntityResolver.resolve()` ignores
-  the caller-supplied `aliases` arg for matching and fuzzy step skips stored
-  aliases; `persist_store` resolves `assigned_by` / record-referenced entity
-  names only when they also appear in the top-level people/places/items lists
-  (silently dropped otherwise); unparseable `recurrence_phrase` persists
-  silently (not gated); `persist_store` `items` link path has no test.
+- ~~Deferred minors from Plan 1 review~~ — DONE 2026-09-08 (backlog-cleanup
+  plan): field_validator import, aliases server_default (0002), redundant
+  PK-leading indexes dropped (0002), malformed-Ollama KeyError wrapped,
+  resolver honours caller + stored aliases, persist_store resolves
+  record-referenced names, recurrence_phrase gated, items link test added.
 - Date grounding vs 3B model: `ground()` returns ok=False for absolute/ISO dates,
   and llama3.2:3b sometimes emits an ISO datetime as `when_phrase` (despite the
   prompt saying "copy the raw phrase") → every such record needlessly gates.
@@ -35,26 +31,31 @@
 - Spec §4.5: `persist_store`/resolver never merge an extraction's `aliases` /
   new `notes` into an already-matched entity row (aliases are write-once at
   creation). Implement alias/notes enrichment on resolve-hit.
-- `Config` should validate `embedding_dim == db.models.EMBED_DIM` (they can
-  silently diverge; a mismatch fails opaquely at pgvector insert).
+- ~~`Config` should validate `embedding_dim == db.models.EMBED_DIM`~~ — DONE
+  2026-09-08 (load_config raises ConfigError on mismatch).
 - Gate UX (spec §4.3): replying "no" to a confirmation gate currently gets
   routed+stored as a fresh utterance; gate message should also carry a one-line
   "about to store: …" summary (the `_summarize` builder already exists).
-- `Orchestrator.handle` calls `session_factory()` and never closes the session —
-  a connection leak for any real `sessionmaker` (matters for Plan 3 FastAPI).
-- `EntityResolver.resolve` full-scans the entity table and fuzzy-scores every row
-  in Python per call — fine now, revisit before Plan 2 query load.
+- ~~`Orchestrator.handle` never closes the session~~ — DONE 2026-09-08
+  (handle() owns one session per call: commit on normal/gated, rollback+raise
+  on unexpected, close in finally).
+- ~~`EntityResolver.resolve` full-scans the entity table~~ — DONE 2026-09-08
+  (`_candidate_rows` narrows to exact/overlap ∪ trigram, capped at 50; needs
+  the pg_trgm indexes from migration 0002). Alias trigram match is still an
+  expression filter (array_to_string), not index-backed — revisit if entity
+  counts get large.
 - Occasion dedupe is global by lowercased name (two people's "birthday" collapse;
   a later better `date_phrase` never updates the row).
-- Add an integration test for `persist_store` that COMMITS and reopens a fresh
-  session to prove the utterance row physically survives a `PersistError`
-  (current tests use the rolled-back `db` fixture; the transaction semantics were
-  verified by inspection in the Plan 1 final review but not by a committing test).
-- Declare the b-tree/GIN/HNSW indexes on the ORM models (currently only in
-  `0001_initial.py`) so `alembic check` / autogenerate is clean and can gate CI.
-  Until then the migration is hand-maintained (conftest now builds the test
-  schema via `alembic upgrade head`, so drift in columns/types/nullability is
-  caught, but not indexes).
+- ~~Committing integration test that the utterance survives a `PersistError`~~
+  — DONE 2026-09-08 (`test_handle_commits_utterance_even_when_write_fails`:
+  a second session on the same connection sees the committed utterance, no
+  record).
+- Declare the b-tree/GIN/HNSW/trgm indexes on the ORM models (currently only in
+  the migrations) so `alembic check` / autogenerate is clean and can gate CI.
+  Partial: `aliases` now has `server_default` on the ORM (2026-09-08); the
+  index set is still migration-only. conftest builds the test schema via
+  `alembic upgrade head`, so column/type/nullability drift is caught, not
+  indexes.
 - Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
 - Plan 3: FastAPI service + pywebview desktop app
 - Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
