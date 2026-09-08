@@ -78,6 +78,16 @@ def _at_time(base: datetime, hour: int, minute: int = 0) -> datetime:
     return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+# A bare day reference ("today", "yesterday", "last Friday", "3 days ago") has
+# no time-of-day; snap it to local noon so it reads back as a day, not a
+# timestamp, and never crosses a day boundary on a timezone shift.
+_DAY_HOUR = 12
+
+
+def _noon(d: datetime) -> datetime:
+    return _at_time(d, _DAY_HOUR)
+
+
 def _last_weekday(now: datetime, target: int) -> datetime:
     delta = (now.weekday() - target) % 7
     if delta == 0:
@@ -103,8 +113,10 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
 
     text = _normalize(phrase)
 
-    if text in ("today", "now"):
+    if text == "now":
         return DateResult(now, True)
+    if text == "today":
+        return DateResult(_noon(now), True)
     if text == "this morning":
         return DateResult(_at_time(now, 9), True)
     if text in ("tonight", "this evening"):
@@ -112,27 +124,27 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
     if text == "this afternoon":
         return DateResult(_at_time(now, 14), True)
     if text == "yesterday":
-        return DateResult(now - timedelta(days=1), True)
+        return DateResult(_noon(now - timedelta(days=1)), True)
     if text == "tomorrow":
-        return DateResult(now + timedelta(days=1), True)
+        return DateResult(_noon(now + timedelta(days=1)), True)
     if text == "last week":
-        return DateResult(now - timedelta(days=7), True)
+        return DateResult(_noon(now - timedelta(days=7)), True)
     if text == "next week":
-        return DateResult(now + timedelta(days=7), True)
+        return DateResult(_noon(now + timedelta(days=7)), True)
     if text == "last month":
-        return DateResult(now - relativedelta(months=1), True)
+        return DateResult(_noon(now - relativedelta(months=1)), True)
     if text == "next month":
-        return DateResult(now + relativedelta(months=1), True)
+        return DateResult(_noon(now + relativedelta(months=1)), True)
     if text == "last year":
-        return DateResult(now - relativedelta(years=1), True)
+        return DateResult(_noon(now - relativedelta(years=1)), True)
     if text == "next year":
-        return DateResult(now + relativedelta(years=1), True)
+        return DateResult(_noon(now + relativedelta(years=1)), True)
 
     # "2 years now" / "for 2 years now" — an ongoing state that began N units ago
     m = re.fullmatch(r"(\d+|a|an) ([a-z]+?)s? now", text)
     if m and m.group(2) in _UNITS:
         qty = 1 if m.group(1) in ("a", "an") else int(m.group(1))
-        return DateResult(now - relativedelta(**{_UNITS[m.group(2)]: qty}), True)
+        return DateResult(_noon(now - relativedelta(**{_UNITS[m.group(2)]: qty})), True)
 
     m = re.fullmatch(r"(?:in )?(\d+|a|an) ([a-z]+?)s? ago", text)
     if not m:
@@ -144,7 +156,7 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
         qty_raw = m.group(1)
         qty = 1 if qty_raw in ("a", "an") else int(qty_raw)
         unit = _UNITS[m.group(2)]
-        return DateResult(now + relativedelta(**{unit: sign * qty}), True)
+        return DateResult(_noon(now + relativedelta(**{unit: sign * qty})), True)
 
     m = re.fullmatch(r"(last|this|next) ([a-z]+)", text)
     if m:
@@ -152,13 +164,13 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
         if wd in _WEEKDAYS:
             target = _WEEKDAYS[wd]
             if qualifier == "last":
-                return DateResult(_last_weekday(now, target), True)
+                return DateResult(_noon(_last_weekday(now, target)), True)
             if qualifier == "this":
-                return DateResult(_this_weekday(now, target), True)
-            return DateResult(_next_weekday(now, target), True)
+                return DateResult(_noon(_this_weekday(now, target)), True)
+            return DateResult(_noon(_next_weekday(now, target)), True)
 
     if text in _WEEKDAYS:
-        return DateResult(_next_weekday(now, _WEEKDAYS[text]), True)
+        return DateResult(_noon(_next_weekday(now, _WEEKDAYS[text])), True)
 
     return DateResult(None, False)
 

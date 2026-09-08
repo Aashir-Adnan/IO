@@ -15,15 +15,21 @@ def test_empty_phrase_ok():
     assert r.ok and r.value is None
 
 
-def test_today():
+def test_today_snaps_to_noon():
     r = ground("today", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 7)
+    assert (r.value.hour, r.value.minute) == (12, 0)
+
+
+def test_now_stays_exact():
+    r = ground("now", NOW)
     assert r.ok and r.value == NOW
 
 
 def test_yesterday():
     r = ground("yesterday", NOW)
     assert r.ok and r.value.date() == dt.date(2026, 9, 6)
-    assert r.value.hour == 15
+    assert r.value.hour == 12
 
 
 def test_tomorrow():
