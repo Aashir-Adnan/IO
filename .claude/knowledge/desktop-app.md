@@ -35,7 +35,42 @@ Vendored static ES modules, no build step, **no CDN** (local-first —
   links; a ```mermaid fence renders as a labelled `<pre>` — real Mermaid
   rendering needs a deliberate vendored lib, tracked in backlog).
 
+## Conversation layer (Phase 1.5)
+
+- `io_assistant/conversation/` — `ConversationStore` (CRUD on the
+  `conversations` / `messages` tables from migration `0003`) + `format_context`
+  (recent turns → a capped `you:` / `io:` string). The **service** owns the
+  tables; `Orchestrator` never touches them (the CLI passes `history=None`).
+- Per turn (`/utterance`, `/voice`, `/ws`): `ensure_active()` → append the user
+  message → `format_context(recent_turns())` → `orchestrator.handle(text,
+  history=…)` → append the assistant message.
+- `Backend` gains `context=` on `route`/`plan`/`phrase` and a new
+  `acknowledge(facts, context=)` — the STORE reply is a natural sentence, not a
+  template. `acknowledge` may only restate `build_fact_list()` output (rows
+  `persist_store` wrote) — LLM boundary intact.
+- Every turn endpoint returns **`TurnResponse`**: `kind` (answer|ack|gate|
+  unknown|error), `intent`, `text`, `shape`, `cards`, `pending_token`,
+  `conversation_id`, `message_id`, `audio_b64`. `cards` are `record` /
+  `tasklist` / `sources` (`orchestrator_cards.py`).
+- `GET /conversation(s)`, `POST /conversation`; `GET /entity/{etype}/{id}` (the
+  Memory Inspector — deterministic facts + confidence from vector similarity);
+  `GET /standby` (greeting name, `memories`/`recall_ms`/`clock`, surfaced chips).
+
+## Voice in the service (Phase 1.5)
+
+- `POST /voice` — multipart WAV in → `WhisperTranscriber` → the same turn flow →
+  `PiperSpeaker.synthesize` → `VoiceOut` (`TurnResponse` + `transcript` +
+  `audio_b64`). `GET /voice/health`. `service/voice.py:VoiceModels` builds
+  Whisper/Piper lazily on the first `/voice` hit; `503` with a reason when a
+  model is missing.
+- `PiperSpeaker` now synthesises **sentence by sentence** with inter-sentence
+  silence and a tuned `SynthesisConfig` (`speak/speech_text.py` does the text
+  prep — abbreviations, times, pauses). Default voice `en_US-hfc_female-medium`.
+- `io listen` is a thin client of `POST /voice` (`voice/client.py:ServiceClient`
+  + `voice/loop.py:VoiceLoop`) — capture stays local, transcribe + synth are the
+  server.
+
 ## Deferred
 
-Token streaming over `/ws`; real Mermaid; `orchestrator.handle` off the event
-loop; a `GET /utterances` history endpoint.
+State 1d task runner (agent loop); external-source provenance; entity-file
+browser; token streaming over `/ws`; real Mermaid; Kokoro `Speaker` adapter.

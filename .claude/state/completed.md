@@ -1,5 +1,19 @@
 # Completed (newest first)
 
+## 2026-09-08 — Plan 5: conversational backend
+`docs/superpowers/plans/2026-09-08-io-phase-5-conversational-backend.md`, 10
+tasks. Spec: `…-phase-1.5-conversational-shell.md`. `0003` conversations/messages
++ `ConversationStore` + `format_context`. `Backend` `context=` on
+route/plan/phrase + `acknowledge()` (natural STORE reply, restates written facts
+only). `Orchestrator` threads history, returns `cards` (record/tasklist/sources)
++ `intent_kind`. Service owns conversations; `/utterance` + `/ws` return
+`TurnResponse`; `/conversation(s)`. `POST /voice` + `/voice/health` (lazy
+Whisper/Piper via `service/voice.py`). Natural Piper — sentence-wise synth +
+`speech_text` prep + tuned `SynthesisConfig`, default `en_US-hfc_female-medium`.
+`io listen` refactored to `POST /voice`. `GET /entity/{etype}/{id}` (Memory
+Inspector) + `GET /standby`. `UiConfig`. Full suite 194 pass / 5 opt-in skipped;
+local-first socket guard still green. Next: Plan 6 (Nocturne desktop client).
+
 ## 2026-09-08 — Plan 4: voice (speech in, speech out)
 `docs/superpowers/plans/2026-09-08-io-phase-4-voice.md`, 7 tasks. Spec §6.1
 addendum (spoken output). `io_assistant/speak/` — `flatten_markdown()` +

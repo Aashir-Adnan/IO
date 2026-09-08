@@ -1,5 +1,14 @@
 # Backlog (highest priority on top)
 
+- Plan 6: Nocturne desktop client — `docs/superpowers/plans/2026-09-08-io-phase-6-nocturne-client.md`
+  (10 tasks). Vendor Inter + Plex Mono + Phosphor + tokens; shell; the orb;
+  Standby / Listening / Conversation+Inspector views; simulated typing;
+  conversations drawer; fullscreen window. Visual source of truth: `docs/design/`.
+- Phase 1.5 deferred: state 1d task runner (agent loop + approval gates + live
+  log + telemetry); external-source provenance (Calendar/Messages); entity-file
+  browser (Timeline/Sources/Review still stubs); real `/ws` token streaming;
+  Kokoro `Speaker` adapter (`[voice].provider`).
+
 - ~~Live-run findings 2026-09-08~~ — all three FIXED 2026-09-08:
   router prompt + held-out fixture (21/21 on Haiku); bare day words snap to
   local noon (`_noon` in `resolve/dates.py`); `scrub_roles()` drops role-noun
