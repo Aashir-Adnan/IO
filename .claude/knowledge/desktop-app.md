@@ -137,11 +137,47 @@ Vendored static ES modules, no build step, **no CDN** (local-first —
 - `dev.ps1 build` → generate icon + `pyinstaller packaging/io.spec` → `dist/IO/
   IO.exe`. `dev.ps1 install` → Desktop shortcut to `dist\IO\IO.exe` (runs
   `build` if the exe is missing).
-- **The PyInstaller build is a manual, Windows-only step for v1.**
-  Hidden-import gaps are found by running `dev.ps1 build` once and adding the
-  missing module to `HIDDEN_IMPORTS` in `io.spec`. macOS/Linux packaging, code
-  signing, `.msi`, auto-update, and a blocking "DB unreachable" dialog are
-  backlog.
+- **Full-featured bundle (Phase 2B.1).** `io.spec` now bundles **voice** too —
+  `collect_all` for `piper` / `faster_whisper` / `sounddevice` / `ctranslate2` /
+  `onnxruntime` / `av`, plus `packaging/hooks/hook-webrtcvad.py` overriding the
+  broken contrib hook. `torch` stays excluded (faster-whisper uses ctranslate2).
+  Voice **models** still download on first use — `VoiceModels._ensure_voice_model`
+  fetches the Piper `.onnx` via `piper.download_voices` on the first `/voice`
+  synth; faster-whisper auto-downloads its model.
+- **DB bootstrap on launch** — `io_assistant/service/bootstrap.py`:
+  `ensure_database(config)` pings Postgres, runs `docker compose -p io -f
+  <bundle>/docker-compose.yml up -d db` if it's down, waits ~60 s, then
+  `alembic upgrade head`. `cli.run()` / `cli.serve()` call it first;
+  `runner.error_dialog(msg)` (a pywebview window) shows a `BootstrapError`
+  (e.g. "Docker Desktop isn't running"). The bundle ships `docker-compose.yml`
+  + `scripts/initdb/`. **The one prerequisite is Docker Desktop running.**
+- **Verified**: build completes; `dist/IO/IO.exe` (~25 MB exe / ~350 MB bundle)
+  starts its own DB container, migrates, serves `/health` + `/voice/health`
+  (whisper code present) + `/standby` with real data; a second launch opens
+  `/app/` in the browser and exits.
+- `packaging/io.spec` has `IO_BUILD_CONSOLE=1` → a console EXE for debugging.
+- **Manual, Windows-only.** macOS/Linux packaging, code signing, `.msi`,
+  auto-update, bundling the voice *models*, and an embedded Postgres are backlog.
+
+## Shell UI (Phase 1.5 + polish)
+
+- **No titlebar.** `frontend/index.html` is `.win > .body > (.rail | .drawer |
+  #view)` — the old white `.titlebar` is gone; window controls are the OS
+  frame. `#status` moved to the bottom of the rail.
+- **Collapsible rail.** `.rail` is 216 px expanded / 66 px collapsed
+  (`data-collapsed`), each item is icon + `.rail-label`; the toggle (`#railtoggle`)
+  persists to `localStorage["io.rail.collapsed"]`. A small `IO` wordmark tops it.
+- **Standby** = big centred clock (time + long date, ticks every 15 s) → greeting
+  → the orb → stats → chips → composer, all centre-aligned.
+- **Orb** (`components/orb.js`) mounts its own fixed-size `.orb` div **inside**
+  the host (never restyles the host) so flex/grid layout can't distort the
+  circle; every layer centres via `inset:0; margin:auto`.
+- **Native folder picker.** `runner.open_window` passes a `js_api` with
+  `pick_folder()` → `window.create_file_dialog(FOLDER_DIALOG)`; the Files view's
+  "Choose folder…" button calls `window.pywebview.api.pick_folder()` and falls
+  back to the text field outside pywebview.
+- Static assets are served `Cache-Control: no-store` (`_NoCacheStatic` in
+  `app.py`) so a rebuild always wins over the browser cache.
 
 ## Deferred
 

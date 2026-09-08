@@ -1,5 +1,23 @@
 # Completed (newest first)
 
+## 2026-09-08 — Phase 2B.1: full-featured bundle + UI shell polish
+Branch `io-ui-shell-polish`. Plan `…-io-phase-2b1-full-bundle.md`.
+**Bundle:** `io.spec` now bundles voice (piper/faster_whisper/sounddevice/
+ctranslate2/onnxruntime/av via `collect_all` + a local `hook-webrtcvad`
+override; torch excluded). `io_assistant/service/bootstrap.py:ensure_database`
+starts the `pgvector` container (`docker compose -p io`) and runs `alembic
+upgrade head` on every `cli.run()`/`serve()`; `runner.error_dialog` surfaces a
+`BootstrapError` in a pywebview window. `VoiceModels._ensure_voice_model`
+lazy-downloads the Piper voice on first synth. Verified: `dist/IO/IO.exe`
+(~350 MB one-dir) self-bootstraps the DB, migrates, serves health/voice-health/
+standby; second launch surfaces + exits.
+**UI:** removed the white titlebar; collapsible labelled rail (216↔66 px,
+persisted); centred iPhone-style standby clock; **orb centering bug fixed**
+(orb.js mounts its own sized div instead of restyling the host — was rendering
+as an ellipse); `[hidden]{display:none!important}` (hidden drawer was eating
+240 px); native folder picker via pywebview `js_api.pick_folder()`; static
+assets `Cache-Control: no-store`. Full suite 302 pass / 10 skip.
+
 ## 2026-09-08 — Phase 2B: desktop packaging
 Branch `io-phase-2b-packaging` (from `main` post-2C). Spec
 `…-io-phase-2-desktop-packaging-design.md`, plan `…-io-phase-2b-desktop-packaging.md`
