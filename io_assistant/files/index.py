@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import os
 from pathlib import Path
 
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from io_assistant.files.chunk import chunk_text
 from io_assistant.files.extract import read_document
 from io_assistant.files.paths import AccessGate
 from io_assistant.files.store import FileIndex
+from io_assistant.files.thumbs import exif_captured_at, make_thumb
 from io_assistant.files.walk import classify_media
 from io_assistant.query.entities import resolve_query_entities
 from io_assistant.resolve.resolver import EntityResolver
@@ -65,6 +67,11 @@ class FileIndexer:
         )
 
         if media_kind is not None:
+            if media_kind == "image":
+                node.captured_at = exif_captured_at(path)
+            out_dir = Path(os.path.expanduser(self._cfg.thumbs_dir))
+            thumb = make_thumb(path, media_kind, out_dir, path_key=pk)
+            node.thumb_path = str(thumb) if thumb is not None else None
             node.status = "ok"
             node.index_hash = content_hash
             node.indexed_at = dt.datetime.now(dt.timezone.utc)
