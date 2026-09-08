@@ -12,7 +12,7 @@ class B:
         self.intent = intent
         self.called = False
 
-    def route(self, u):
+    def route(self, u, *, context=None):
         self.called = True
         return self.intent
 

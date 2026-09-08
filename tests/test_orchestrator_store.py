@@ -255,7 +255,9 @@ def test_confirm_replays_without_reextraction(db, config, fake_backend, monkeypa
     assert rec.title == "original title"
     assert rec.source_utterance_id == res.pending.utterance_id
     assert db.query(m.Utterance).count() == 1
-    assert fake_backend.calls == calls_before  # no route, no extract
+    # the replay re-runs neither route nor extract (acknowledge on the ack path is fine)
+    new_calls = fake_backend.calls[len(calls_before):]
+    assert "route" not in new_calls and "extract" not in new_calls
 
 
 def test_doctor_cli_smoke(monkeypatch):

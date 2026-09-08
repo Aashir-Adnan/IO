@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
+from sqlalchemy import select
+
 from io_assistant.config import ResolverConfig
+from io_assistant.db import models as m
 from io_assistant.query.entities import resolve_query_entities
 from io_assistant.query.planner import Planner
 from io_assistant.query.rank import rank
@@ -12,9 +15,20 @@ from io_assistant.query.respond import Responder
 from io_assistant.query.retrieve import retrieve_subquery
 from io_assistant.resolve.resolver import EntityResolver
 
-__all__ = ["QueryAnswer", "QueryPipeline"]
+__all__ = ["QueryAnswer", "QueryPipeline", "RecordRef"]
 
 _TOP_N = 20
+
+
+@dataclass
+class RecordRef:
+    record_id: int
+    kind: str
+    domain: str | None
+    title: str
+    status: str | None
+    when: datetime | None
+    due: datetime | None
 
 
 @dataclass
@@ -22,6 +36,34 @@ class QueryAnswer:
     text: str
     shape: str
     n_rows: int
+    source_record_ids: list[int] = field(default_factory=list)
+    list_records: list[RecordRef] = field(default_factory=list)
+
+
+def _project(session, rows) -> list[RecordRef]:
+    seen: dict[int, None] = {}
+    for r in rows:
+        if getattr(r, "target_type", "record") == "record":
+            seen.setdefault(r.obj.id, None)
+    ids = list(seen)
+    if not ids:
+        return []
+    by_id = {
+        rec.id: rec
+        for rec in session.execute(
+            select(m.Record).where(m.Record.id.in_(ids))
+        ).scalars().all()
+    }
+    out: list[RecordRef] = []
+    for rid in ids:
+        rec = by_id.get(rid)
+        if rec is None:
+            continue
+        out.append(RecordRef(
+            record_id=rec.id, kind=rec.kind, domain=rec.domain, title=rec.title,
+            status=rec.status, when=rec.occurred_at, due=rec.due_at,
+        ))
+    return out
 
 
 class QueryPipeline:
@@ -30,9 +72,11 @@ class QueryPipeline:
         self._embedder = embedder
         self._cfg = resolver_cfg
 
-    def answer(self, session, question: str, now: datetime) -> QueryAnswer:
+    def answer(
+        self, session, question: str, now: datetime, *, context: str | None = None
+    ) -> QueryAnswer:
         embedder = self._embedder
-        plan = Planner(self._backend).run(question, now)
+        plan = Planner(self._backend).run(question, now, context=context)
 
         groups = []
         starts: list[datetime] = []
@@ -55,5 +99,14 @@ class QueryPipeline:
         expanded.sort(key=lambda r: r.score, reverse=True)
         final = expanded[:_TOP_N]
 
-        text = Responder(self._backend).run(question, final, plan.answer_shape)
-        return QueryAnswer(text, plan.answer_shape, len(final))
+        text = Responder(self._backend).run(
+            question, final, plan.answer_shape, context=context
+        )
+        record_refs = _project(session, final)
+        return QueryAnswer(
+            text=text,
+            shape=plan.answer_shape,
+            n_rows=len(final),
+            source_record_ids=[r.record_id for r in record_refs],
+            list_records=record_refs,
+        )

@@ -13,7 +13,7 @@ class Router:
     def __init__(self, backend: Backend):
         self._backend = backend
 
-    def classify(self, utterance: str) -> Intent:
+    def classify(self, utterance: str, *, context: str | None = None) -> Intent:
         """Classify an utterance into an intent.
 
         Args:
@@ -24,4 +24,4 @@ class Router:
         """
         if not utterance or not utterance.strip():
             return "unknown"
-        return self._backend.route(utterance)
+        return self._backend.route(utterance, context=context)

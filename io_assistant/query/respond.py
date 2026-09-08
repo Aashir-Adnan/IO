@@ -46,7 +46,11 @@ class Responder:
     def __init__(self, backend: Backend):
         self._backend = backend
 
-    def run(self, question: str, rows: list, shape: str) -> str:
+    def run(
+        self, question: str, rows: list, shape: str, *, context: str | None = None
+    ) -> str:
         if not rows:
             return _EMPTY
-        return self._backend.phrase(question, rows_to_json(rows), shape)
+        return self._backend.phrase(
+            question, rows_to_json(rows), shape, context=context
+        )
