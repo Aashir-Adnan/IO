@@ -56,6 +56,12 @@
   index set is still migration-only. conftest builds the test schema via
   `alembic upgrade head`, so column/type/nullability drift is caught, not
   indexes.
-- Plan 2: query pipeline (planner, SQL compiler, hybrid retrieval, respond)
-- Plan 3: FastAPI service + pywebview desktop app
-- Plan 4: voice (faster-whisper, push-to-talk, passive mode, io doctor)
+- ~~Plan 2: query pipeline~~ — DONE 2026-09-08 (see completed.md).
+- Plan 2 follow-up: `aggregation` (count/latest) parsed onto SubQuery but not
+  compiled into SQL — `func.count()` / `ORDER BY recency LIMIT 1` branch in
+  `compile_structured()`.
+- Plan 3: FastAPI service + pywebview desktop app (spec §7, stages 14-15)
+- Plan 4: voice — faster-whisper transcribe (in), Piper TTS (out, mandatory,
+  female voice — NEW requirement beyond spec §6), push-to-talk, passive mode,
+  `io doctor`. TTS engine decided 2026-09-08: Piper (local, offline, en_US
+  female voice). Needs a spec addendum for spoken output.

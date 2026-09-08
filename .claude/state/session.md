@@ -1,13 +1,12 @@
 # Current session
 
-Backlog-cleanup plan complete (7 tasks, 111 pass / 3 opt-in skipped) — see
-completed.md. Cloud backend also hooked up this session
-(`backend.provider = "anthropic"`, Haiku 4.5).
+Plan 2 (query pipeline) complete — 141 pass / 3 opt-in skipped, merged into
+`main`. QUERY path answers end-to-end via `io_assistant/query/`.
 
-Next: Plan 2 — query pipeline (planner → SQL compiler → hybrid retrieval →
-respond → QUERY path e2e). Spec §5, stages 9-13. Needs a plan doc written
-first (`writing-plans`). The pg_trgm indexes and `_candidate_rows` from this
-session are already in place for query-load work.
+Next: Plan 3 (FastAPI + pywebview desktop, spec §7), then Plan 4 (voice:
+faster-whisper in, Piper TTS out — mandatory female voice, a NEW requirement
+past spec §6). Write each plan (`writing-plans`), review, execute.
 
-Note: tests need `IO_TEST_DATABASE_URL` exported (no `.env` autoload); DB is
-`docker compose` Postgres+pgvector on :5432, `io` / `io_test`.
+Working on `main` directly (trunk-based, per user). Tests need
+`IO_TEST_DATABASE_URL` exported; DB is docker compose Postgres+pgvector :5432.
+Backend is `provider = "anthropic"` (Haiku) — needs a credential to actually run.

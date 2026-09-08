@@ -1,6 +1,16 @@
 # Completed (newest first)
 
-## 2026-09-08
+## 2026-09-08 — Plan 2: query pipeline
+`docs/superpowers/plans/2026-09-08-io-phase-2-query-pipeline.md`, 10 tasks.
+`io_assistant/query/`: `plan.py` (QueryPlan + ground_plan), `planner.py`,
+`entities.py` (+ `EntityResolver.lookup`), `compile.py`, `retrieve.py`
+(structured ∪ pgvector), `rank.py`, `recur.py` (RRULE), `respond.py`,
+`pipeline.py`. `LocalBackend`/`AnthropicBackend` `plan()`+`phrase()` real.
+`Orchestrator` QUERY branch answers + logs (`resolved_intent="query"`).
+Spec §9 scenarios 2 & 3 pass e2e. Full suite 141 pass / 3 opt-in skipped.
+Deferred: `aggregation` count/latest not pushed into SQL yet.
+
+## 2026-09-08 — Backlog cleanup
 Backlog-cleanup plan (`docs/superpowers/plans/2026-09-08-io-backlog-cleanup.md`),
 7 tasks: config `embedding_dim` guard; `LocalBackend` wraps malformed Ollama
 bodies; `Orchestrator` owns one session per `handle()` (commit + close, no
