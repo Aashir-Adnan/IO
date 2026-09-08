@@ -99,6 +99,8 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
             f"{url} in a browser instead."
         ) from e
 
+    state = {"acrylic": False}
+
     class _Api:
         def pick_folder(self):
             try:
@@ -127,6 +129,9 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
             except Exception:
                 pass
 
+        def effects(self):
+            return dict(state)
+
     geo = _load_geometry()
     kw = dict(
         width=geo.get("width", 1180), height=geo.get("height", 760),
@@ -134,42 +139,36 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         min_size=(960, 640),
         fullscreen=fullscreen and not geo,
         frameless=True, easy_drag=True,
-        background_color="#0E0F17",
         text_select=True,
         js_api=_Api(),
     )
     try:
         window = webview.create_window(title, url, transparent=True, **kw)
     except Exception:
-        window = webview.create_window(title, url, **kw)
+        window = webview.create_window(
+            title, url, background_color="#0E0F17", **kw)
 
-    def _menu():  # pragma: no cover - GUI
+    def _apply_backdrop():  # pragma: no cover - Windows GUI
+        """Win11 acrylic behind the (transparent) webview."""
+        if os.name != "nt":
+            return
         try:
-            from webview.menu import Menu, MenuAction
+            import ctypes
 
-            def _new_conv():
-                try:
-                    httpx.post(url.replace("/app/", "/conversation"), timeout=3)
-                except Exception:
-                    pass
-                window.load_url(url)
-
-            return [
-                Menu("File", [
-                    MenuAction("New Conversation", _new_conv),
-                    MenuAction("Quit", window.destroy),
-                ]),
-                Menu("View", [
-                    MenuAction("Reload", lambda: window.load_url(url)),
-                    MenuAction("Toggle Fullscreen", window.toggle_fullscreen),
-                    MenuAction("Minimize", window.minimize),
-                ]),
-            ]
+            native = getattr(window, "native", None)
+            hwnd = int(getattr(native, "Handle", 0) or 0)
+            if not hwnd:
+                return
+            dwm = ctypes.windll.dwmapi
+            dark = ctypes.c_int(1)
+            dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), 4)  # dark mode
+            backdrop = ctypes.c_int(3)  # DWMSBT_TRANSIENTWINDOW (acrylic)
+            r = dwm.DwmSetWindowAttribute(
+                hwnd, 38, ctypes.byref(backdrop), 4)  # DWMWA_SYSTEMBACKDROP_TYPE
+            state["acrylic"] = (r == 0)
         except Exception:
-            return []
+            pass
 
+    window.events.shown += _apply_backdrop
     window.events.closing += lambda: _save_geometry(window)
-    try:
-        webview.start(menu=_menu())
-    except TypeError:  # older pywebview without menu kwarg
-        webview.start()
+    webview.start()

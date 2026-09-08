@@ -102,8 +102,17 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+async function applyWindowEffects() {
+  try {
+    const eff = wv() && wv().effects ? await wv().effects() : null;
+    document.documentElement.dataset.acrylic = eff && eff.acrylic ? "1" : "0";
+  } catch { document.documentElement.dataset.acrylic = "0"; }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ctx = ctx;
+  applyWindowEffects();
+  setTimeout(applyWindowEffects, 800);   // the backdrop is applied on 'shown'
   drawer = Drawer(document.getElementById("drawer"), ctx);
   settings = Settings(
     document.getElementById("settings"),
