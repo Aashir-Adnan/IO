@@ -8,6 +8,8 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Text,
     func,
@@ -180,3 +182,41 @@ class OccasionPerson(Base):
         ForeignKey("people.id", ondelete="CASCADE"), primary_key=True
     )
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (Index("ix_conversations_last_at", "last_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_conversation_id_created_at", "conversation_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(12), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    intent: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    source: Mapped[str] = mapped_column(String(8), nullable=False, server_default="text")
+    utterance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("utterances.id", ondelete="SET NULL"), nullable=True
+    )
+    audio_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
