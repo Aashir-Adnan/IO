@@ -60,6 +60,33 @@ class UiConfig(BaseModel):
     typing_cps: int = 45
     min_think_ms: int = 600
 
+class FilesConfig(BaseModel):
+    enabled: bool = False
+    allowlist_roots: list[str] = []
+    max_file_bytes: int = 2_000_000
+    index_extensions: list[str] = [
+        ".txt", ".md", ".markdown", ".rst", ".pdf", ".docx", ".rtf",
+        ".csv", ".tsv", ".json", ".yaml", ".yml", ".html", ".htm", ".xml", ".log",
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".rs",
+        ".c", ".h", ".cpp", ".sh",
+    ]
+    media_extensions: list[str] = [
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".tiff",
+        ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi",
+    ]
+    exclude_globs: list[str] = [
+        "**/.git/**", "**/node_modules/**", "**/__pycache__/**", "**/.venv/**",
+        "**/.env*", "**/*.env", "**/*.pem", "**/*.key", "**/id_rsa*",
+        "**/*.kdbx", "**/*.ppk", "**/.ssh/**", "**/.aws/**", "**/.gnupg/**",
+    ]
+    chunk_tokens: int = 400
+    chunk_overlap: int = 40
+    max_chunks_per_file: int = 60
+    max_files_per_registration: int = 5000
+    retrieval_file_limit: int = 6
+    follow_symlinks: bool = False
+    thumbs_dir: str = "~/.local/share/io/thumbs"
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -69,6 +96,7 @@ class Config(BaseModel):
     voice: VoiceConfig = VoiceConfig()
     capture: CaptureConfig = CaptureConfig()
     ui: UiConfig = UiConfig()
+    files: FilesConfig = FilesConfig()
 
 _WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
 

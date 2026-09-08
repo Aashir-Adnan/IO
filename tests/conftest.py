@@ -9,7 +9,7 @@ from io_assistant.models_domain import AnswerShape, ExtractionResult, Intent
 
 from io_assistant.config import (
     Config, BackendConfig, ResolverConfig, ServiceConfig, VoiceConfig, CaptureConfig,
-    UiConfig,
+    UiConfig, FilesConfig,
 )
 from io_assistant.db.base import make_engine, make_session_factory, Base
 from io_assistant.db import models  # noqa: F401 — register mappers
@@ -36,6 +36,7 @@ def config() -> Config:
         voice=VoiceConfig(),
         capture=CaptureConfig(),
         ui=UiConfig(),
+        files=FilesConfig(),
     )
 
 
@@ -194,6 +195,26 @@ class FakeTranscriber:
 @pytest.fixture
 def fake_transcriber():
     return FakeTranscriber()
+
+
+class StubEmbedder:
+    """Deterministic embedder for tests — 768-d zeros unless a mapping hit."""
+
+    def __init__(self, mapping: dict | None = None):
+        self.mapping = mapping or {}
+        self.calls: list[str] = []
+
+    def embed_one(self, t: str) -> list[float]:
+        self.calls.append(t)
+        return self.mapping.get(t, [0.0] * 768)
+
+    def embed(self, ts: list[str]) -> list[list[float]]:
+        return [self.embed_one(t) for t in ts]
+
+
+@pytest.fixture
+def stub_embedder():
+    return StubEmbedder()
 
 
 # --------------------------------------------------------------------------- #

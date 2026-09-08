@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Intent = Literal["store", "query", "unknown"]
+Intent = Literal["store", "query", "file", "unknown"]
 AnswerShape = Literal["text", "markdown", "diagram"]
 Domain = Literal[
     "social", "job", "home", "health", "finance", "learning", "errand", "other"
@@ -113,7 +113,20 @@ class SourcesCard(BaseModel):
     labels: list[str] = Field(default_factory=list)
 
 
-Card = RecordCard | TaskListCard | SourcesCard
+class FileHit(BaseModel):
+    path: str
+    title: str | None = None
+    why: str
+    media_kind: str | None = None
+
+
+class FilesCard(BaseModel):
+    type: Literal["files"] = "files"
+    hits: list[FileHit] = Field(default_factory=list)
+    searched: int = 0
+
+
+Card = RecordCard | TaskListCard | SourcesCard | FilesCard
 
 
 def normalize_kind(raw: str) -> str:

@@ -34,6 +34,14 @@ auto_speak = "voice"
 typing_cps = 45
 min_think_ms = 600
 
+[files]
+# IO can read files under these locations and any path you register.
+# NOTE: when [backend].provider is "anthropic" or "hybrid", file text is sent
+# to api.anthropic.com for summarising and answering. Embeddings stay local.
+enabled = false
+allowlist_roots = []
+max_file_bytes = 2000000
+
 [resolver]
 fuzzy_threshold = 92
 vector_similarity_threshold = 0.85
