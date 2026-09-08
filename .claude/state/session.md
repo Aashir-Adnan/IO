@@ -1,12 +1,14 @@
 # Current session
 
-Plan 2 (query pipeline) complete — 141 pass / 3 opt-in skipped, merged into
-`main`. QUERY path answers end-to-end via `io_assistant/query/`.
+Plans 2 (query pipeline) and 3 (FastAPI service + pywebview desktop) complete —
+153 pass / 3 opt-in skipped, all on `main`.
 
-Next: Plan 3 (FastAPI + pywebview desktop, spec §7), then Plan 4 (voice:
-faster-whisper in, Piper TTS out — mandatory female voice, a NEW requirement
-past spec §6). Write each plan (`writing-plans`), review, execute.
+Next: **Plan 4 — voice.** faster-whisper transcribe (in), Piper TTS (out —
+MANDATORY, en_US female voice; a NEW requirement beyond spec §6). Also
+push-to-talk hotkey, passive/VAD mode, `io doctor`. Needs a spec addendum for
+spoken output. The Plan-4 voice client talks to `io serve` over `/ws`;
+`io serve` streams the answer text back, the client speaks it via Piper.
 
-Working on `main` directly (trunk-based, per user). Tests need
-`IO_TEST_DATABASE_URL` exported; DB is docker compose Postgres+pgvector :5432.
-Backend is `provider = "anthropic"` (Haiku) — needs a credential to actually run.
+Working on `main` (trunk-based). Tests need `IO_TEST_DATABASE_URL` exported; DB
+is docker compose Postgres+pgvector :5432. Backend `provider = "anthropic"`
+(Haiku) — needs a credential to actually run end-to-end.

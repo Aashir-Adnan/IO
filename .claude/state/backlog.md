@@ -60,7 +60,12 @@
 - Plan 2 follow-up: `aggregation` (count/latest) parsed onto SubQuery but not
   compiled into SQL — `func.count()` / `ORDER BY recency LIMIT 1` branch in
   `compile_structured()`.
-- Plan 3: FastAPI service + pywebview desktop app (spec §7, stages 14-15)
+- ~~Plan 3: FastAPI service + pywebview desktop app~~ — DONE 2026-09-08
+  (see completed.md).
+- Plan 3 follow-ups: token streaming over `/ws`; real Mermaid rendering (needs a
+  deliberately-vendored lib); run `orchestrator.handle` off the event-loop
+  thread; `GET /utterances` history endpoint; `io run` window not yet exercised
+  on a real display.
 - Plan 4: voice — faster-whisper transcribe (in), Piper TTS (out, mandatory,
   female voice — NEW requirement beyond spec §6), push-to-talk, passive mode,
   `io doctor`. TTS engine decided 2026-09-08: Piper (local, offline, en_US

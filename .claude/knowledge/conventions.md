@@ -18,5 +18,10 @@
 - **Schema changes are Alembic migrations only** (`rules/migrations.md`); no
   ad-hoc `ALTER`.
 - **Repo layout** — one package per layer (`capture/`, `transcribe/`, `route/`,
-  `extract/`, `resolve/`, `persist/`, `query/`, `respond/`, `backend/`),
-  `orchestrator.py`, `db/` (models + `migrations/`), `prompts/` (versioned).
+  `extract/`, `resolve/`, `persist/`, `query/`, `respond/`, `backend/`,
+  `service/`), `orchestrator.py`, `db/` (models + `migrations/`), `prompts/`
+  (versioned), `frontend/` (vendored static assets).
+- **The service binds `127.0.0.1` only**; the frontend references no external
+  URLs — `tests/test_frontend_assets.py` enforces it. `io run` opens the
+  pywebview window; `io serve` is headless (the client for the Plan 4 voice
+  loop). See `knowledge/desktop-app.md`.

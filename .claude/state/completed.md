@@ -1,5 +1,16 @@
 # Completed (newest first)
 
+## 2026-09-08 — Plan 3: local service + desktop shell
+`docs/superpowers/plans/2026-09-08-io-phase-3-service-and-desktop.md`, 6 tasks.
+`io_assistant/service/`: `create_app()` (FastAPI, one Orchestrator), `/health`,
+`POST /utterance` (gate carried via in-memory `pending_token` map), `WS /ws`,
+static frontend mounted at `/app`. `frontend/` — vendored ES modules, hash
+router, WS client, hand-rolled `vendor/markdown.js` (no CDN, enforced by
+`test_frontend_assets.py`); chat active, timeline/sources/review stubbed.
+`io serve` (headless) + `io run` (pywebview). Full suite 153 pass / 3 skipped.
+`io serve` smoke-tested (health, /app/, assets). Deferred: token streaming,
+real Mermaid, off-thread handle, history endpoint.
+
 ## 2026-09-08 — Plan 2: query pipeline
 `docs/superpowers/plans/2026-09-08-io-phase-2-query-pipeline.md`, 10 tasks.
 `io_assistant/query/`: `plan.py` (QueryPlan + ground_plan), `planner.py`,
