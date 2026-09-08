@@ -74,6 +74,48 @@ class ExtractionResult(BaseModel):
     records: list[ExtractedRecord] = Field(default_factory=list)
 
 
+# --- structured cards returned alongside a turn's prose -----------------------
+
+class EntityRef(BaseModel):
+    etype: Literal["person", "place", "item", "occasion"]
+    id: int
+    name: str
+
+
+class RecordCard(BaseModel):
+    type: Literal["record"] = "record"
+    record_id: int
+    kind: str
+    domain: str | None = None
+    title: str
+    entities: list[EntityRef] = Field(default_factory=list)
+    when: datetime | None = None
+    due: datetime | None = None
+    status: str | None = None
+
+
+class TaskListItem(BaseModel):
+    record_id: int
+    title: str
+    status: str | None = None
+    due: datetime | None = None
+
+
+class TaskListCard(BaseModel):
+    type: Literal["tasklist"] = "tasklist"
+    items: list[TaskListItem] = Field(default_factory=list)
+
+
+class SourcesCard(BaseModel):
+    type: Literal["sources"] = "sources"
+    record_ids: list[int] = Field(default_factory=list)
+    count: int = 0
+    labels: list[str] = Field(default_factory=list)
+
+
+Card = RecordCard | TaskListCard | SourcesCard
+
+
 def normalize_kind(raw: str) -> str:
     s = (raw or "").lower()
     s = re.sub(r"[ \-]", "_", s)
