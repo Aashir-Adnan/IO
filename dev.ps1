@@ -183,22 +183,34 @@ function Do-Status {
   docker compose ps
 }
 
+function Do-Build {
+  if (-not (Test-Path "$Root\assets\io-logo.png")) {
+    Warn "assets\io-logo.png is missing - add the logo there first."; return
+  }
+  Info "generating icon"
+  uv run python "$Root\scripts\make_icon.py"
+  Info "running PyInstaller (this takes a few minutes)"
+  uv run pyinstaller "$Root\packaging\io.spec" --noconfirm
+  $exe = "$Root\dist\IO\IO.exe"
+  if (Test-Path $exe) { Ok "built: $exe" } else { Warn "build failed - see PyInstaller output" }
+}
+
 function Do-Install {
+  $exe = "$Root\dist\IO\IO.exe"
+  if (-not (Test-Path $exe)) { Do-Build }
+  if (-not (Test-Path $exe)) { return }
   $desktop = [Environment]::GetFolderPath("Desktop")
   $lnk = Join-Path $desktop "IO.lnk"
-  $ps = (Get-Command powershell).Source
   $w = New-Object -ComObject WScript.Shell
   $s = $w.CreateShortcut($lnk)
-  $s.TargetPath = $ps
-  $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\dev.ps1`" up -Window"
+  $s.TargetPath = $exe
   $s.WorkingDirectory = $Root
-  $s.WindowStyle = 7           # minimized
-  $s.IconLocation = "$ps,0"
-  $s.Description = "Start IO (Postgres + service + desktop window); close the window to stop."
+  $s.IconLocation = "$Root\assets\io.ico"
+  $s.Description = "IO - local-first assistant"
   $s.Save()
-  Ok "shortcut created: $lnk"
-  Write-Host "     Double-click it: the stack comes up and the window opens."
-  Write-Host "     Close the window: everything shuts down."
+  Ok "shortcut created: $lnk  ->  $exe"
+  Write-Host "     Double-click it to launch. A second launch just opens the"
+  Write-Host "     running window in your browser (single-instance)."
 }
 
 function Show-Help {
@@ -213,7 +225,8 @@ function Show-Help {
   Write-Host "  .\dev.ps1 listen          voice mode"
   Write-Host "  .\dev.ps1 doctor"
   Write-Host "  .\dev.ps1 test [pytest args]"
-  Write-Host "  .\dev.ps1 install         put an 'IO' shortcut on the Desktop"
+  Write-Host "  .\dev.ps1 build           generate the icon + PyInstaller bundle (dist\IO\IO.exe)"
+  Write-Host "  .\dev.ps1 install         Desktop 'IO' shortcut -> dist\IO\IO.exe (builds if needed)"
 }
 
 switch ($Command.ToLower()) {
@@ -231,6 +244,7 @@ switch ($Command.ToLower()) {
   }
   "listen"  { uv run io listen @Rest }
   "doctor"  { uv run io doctor }
+  "build"   { Do-Build }
   "install" { Do-Install }
   "test" {
     Ensure-Postgres
