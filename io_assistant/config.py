@@ -3,7 +3,7 @@ import os
 import tomllib
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError
 
 class ConfigError(Exception):
     pass
@@ -57,6 +57,18 @@ def load_config(path: str | Path | None = None) -> Config:
         backend["instruct_model"] = PROFILE_DEFAULTS[profile]["instruct_model"]
 
     try:
-        return Config.model_validate(raw)
+        cfg = Config.model_validate(raw)
     except ValidationError as e:
         raise ConfigError(str(e)) from e
+
+    # The embedding dimension is fixed: the ORM/migration DDL is Vector(EMBED_DIM).
+    # A mismatch otherwise surfaces only as an opaque pgvector insert failure.
+    from io_assistant.db.models import EMBED_DIM
+
+    if cfg.embedding_dim != EMBED_DIM:
+        raise ConfigError(
+            f"embedding_dim {cfg.embedding_dim} != db.models.EMBED_DIM "
+            f"{EMBED_DIM}; changing the embedding dimension needs a migration "
+            f"+ backfill (see .claude/rules/migrations.md)"
+        )
+    return cfg

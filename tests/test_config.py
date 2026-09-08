@@ -94,3 +94,24 @@ def test_env_overrides_database_url(tmp_path, monkeypatch):
     """)
     cfg = load_config(p)
     assert cfg.database_url == "postgresql+psycopg://env@localhost/envdb"
+
+def test_embedding_dim_must_match_orm(tmp_path):
+    p = write_toml(tmp_path, """
+        database_url = "postgresql+psycopg://u:p@localhost/db"
+        embedding_dim = 512
+        [backend]
+        provider = "local"
+        profile = "light"
+        anthropic_model = "claude-haiku-4-5"
+        ollama_url = "http://localhost:11434"
+        ollama_keep_alive = "30s"
+        instruct_model = "llama3.2:3b"
+        embed_model = "nomic-embed-text"
+        num_thread = 0
+        [resolver]
+        fuzzy_threshold = 92
+        vector_similarity_threshold = 0.85
+        confidence_gate_threshold = 0.6
+    """)
+    with pytest.raises(ConfigError, match="embedding_dim"):
+        load_config(p)
