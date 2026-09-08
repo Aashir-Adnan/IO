@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
@@ -29,7 +39,9 @@ class Person(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
-    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    aliases: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'::text[]")
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding = mapped_column(Vector(EMBED_DIM), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -44,7 +56,9 @@ class Place(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    aliases: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'::text[]")
+    )
     embedding = mapped_column(Vector(EMBED_DIM), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
@@ -58,7 +72,9 @@ class Item(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
-    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    aliases: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'::text[]")
+    )
     embedding = mapped_column(Vector(EMBED_DIM), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(

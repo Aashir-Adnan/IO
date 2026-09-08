@@ -45,6 +45,32 @@ def test_db_fixture_isolates_commits(db, engine):
 
 
 @requires_db
+def test_aliases_column_defaults_to_empty_array(db):
+    from sqlalchemy import text as _t
+
+    db.execute(_t("INSERT INTO people (canonical_name) VALUES ('Defaulted')"))
+    row = db.execute(_t(
+        "SELECT aliases FROM people WHERE canonical_name = 'Defaulted'"
+    )).first()
+    assert row[0] == []
+
+
+@requires_db
+def test_trigram_and_pk_index_cleanup(db):
+    from sqlalchemy import text as _t
+
+    names = {r[0] for r in db.execute(_t(
+        "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
+    ))}
+    assert "ix_people_canonical_name_trgm" in names
+    assert "ix_places_name_trgm" in names
+    assert "ix_items_name_trgm" in names
+    assert "ix_record_people_person_id" in names          # kept (2nd PK col)
+    assert "ix_record_people_record_id" not in names      # dropped (PK covers)
+    assert "ix_occasion_people_occasion_id" not in names  # dropped (PK covers)
+
+
+@requires_db
 def test_record_accepts_arbitrary_kind(db):
     u = m.Utterance(text="gym leg day", source="text",
                     captured_at=dt.datetime.now(dt.timezone.utc))
