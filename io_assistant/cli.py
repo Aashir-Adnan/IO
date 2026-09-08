@@ -84,10 +84,37 @@ def run() -> None:
 
 
 @app.command()
+def listen(passive: bool = typer.Option(None, help="hands-free VAD mode")) -> None:
+    """Voice: speak to io, hear the answer."""
+    from io_assistant.speak.piper import PiperSpeaker
+    from io_assistant.transcribe.whisper import WhisperTranscriber
+    from io_assistant.voice.client import ServiceClient
+    from io_assistant.voice.loop import VoiceLoop
+
+    config = load_config()
+    base = f"http://{config.service.host}:{config.service.port}"
+    client = ServiceClient(base)
+    if not client.health():
+        print(f"io service not reachable at {base} — run `io serve` first.")
+        raise typer.Exit(1)
+    loop = VoiceLoop(
+        config,
+        transcriber=WhisperTranscriber(config),
+        speaker=PiperSpeaker(config),
+        client=client,
+    )
+    use_passive = config.capture.passive if passive is None else passive
+    (loop.run_passive if use_passive else loop.run_push_to_talk)()
+
+
+@app.command()
 def doctor() -> None:
-    """Environment diagnostics (Plan 4)."""
-    print("io doctor: not implemented yet (Plan 4)")
-    raise typer.Exit(0)
+    """Check the local stack (Postgres, pgvector, models, Whisper, Piper)."""
+    from io_assistant.doctor import format_report, run_checks
+
+    checks = run_checks(load_config())
+    print(format_report(checks))
+    raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
 if __name__ == "__main__":
