@@ -67,11 +67,32 @@ ctx.handleTurn = handleTurn;
 function renderRail() {
   const el = document.getElementById("railnav");
   const active = store.get().view;
-  el.innerHTML = NAV.map((n) =>
-    `<button class="rail-btn${(n.nav === active || (n.nav === "standby" && active === "talk")) ? " on" : ""}" data-nav="${n.nav}" title="${n.label}" aria-label="${n.label}">${icon(n.key, { size: 19 })}</button>`
-  ).join("");
-  document.querySelector('.rail [data-nav="settings"]').innerHTML = icon("gear", { size: 19 });
+  el.innerHTML = NAV.map((n) => {
+    const on = n.nav === active || (n.nav === "standby" && active === "talk")
+      || (n.nav === "files" && active === "gallery");
+    return `<button class="rail-btn${on ? " on" : ""}" data-nav="${n.nav}" title="${n.label}" aria-label="${n.label}">${icon(n.key, { size: 20 })}<span class="rail-label">${n.label}</span></button>`;
+  }).join("");
+  document.querySelector('.rail [data-nav="settings"]').innerHTML =
+    `${icon("gear", { size: 20 })}<span class="rail-label">Settings</span>`;
 }
+
+const railEl = document.getElementById("rail");
+function applyRailCollapsed(v) {
+  railEl.dataset.collapsed = v ? "true" : "false";
+  const t = document.getElementById("railtoggle");
+  if (t) {
+    t.innerHTML = icon(v ? "chevronRight" : "chevronLeft", { size: 16 });
+    t.title = v ? "Expand sidebar" : "Collapse sidebar";
+  }
+}
+let railCollapsed = false;
+try { railCollapsed = localStorage.getItem("io.rail.collapsed") === "1"; } catch { /* private mode */ }
+applyRailCollapsed(railCollapsed);
+document.getElementById("railtoggle").addEventListener("click", () => {
+  railCollapsed = !railCollapsed;
+  applyRailCollapsed(railCollapsed);
+  try { localStorage.setItem("io.rail.collapsed", railCollapsed ? "1" : "0"); } catch { /* ignore */ }
+});
 
 function route() {
   renderRail();

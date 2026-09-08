@@ -10,7 +10,8 @@ export function mount(root, ctx) {
       <header class="files-head">
         <h1>Files</h1>
         <form class="files-add">
-          <input type="text" name="path" placeholder="Add a file or folder path" />
+          <button type="button" class="files-browse">${icon("folderOpen", { size: 16 })} Choose folder…</button>
+          <input type="text" name="path" placeholder="…or paste a file / folder path" />
           <button type="submit">${icon("folders", { size: 16 })} Add</button>
         </form>
         <div class="files-msg" hidden></div>
@@ -20,7 +21,30 @@ export function mount(root, ctx) {
 
   const rootsEl = root.querySelector(".files-roots");
   const msg = root.querySelector(".files-msg");
+  const pathInput = root.querySelector('.files-add input[name="path"]');
   let timer = null;
+
+  async function addPath(path) {
+    if (!path) return;
+    try {
+      const r = await ctx.api.registerFile(path);
+      msg.hidden = false;
+      msg.textContent = `Added — ${r.discovered} file(s), indexing…`;
+      poll();
+    } catch {
+      msg.hidden = false;
+      msg.textContent = "Couldn't add that path (not allowed or not found).";
+    }
+  }
+
+  root.querySelector(".files-browse").addEventListener("click", async () => {
+    const picker = window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder;
+    if (!picker) { pathInput.focus(); return; }
+    try {
+      const chosen = await window.pywebview.api.pick_folder();
+      if (chosen) addPath(chosen);
+    } catch { pathInput.focus(); }
+  });
 
   async function render() {
     let data = { roots: [] };
@@ -60,20 +84,12 @@ export function mount(root, ctx) {
     if (s.queue_depth) timer = setTimeout(poll, 2500);
   }
 
-  root.querySelector(".files-add").addEventListener("submit", async (e) => {
+  root.querySelector(".files-add").addEventListener("submit", (e) => {
     e.preventDefault();
-    const path = e.target.path.value.trim();
+    const path = pathInput.value.trim();
     if (!path) return;
-    try {
-      const r = await ctx.api.registerFile(path);
-      msg.hidden = false;
-      msg.textContent = `Added — ${r.discovered} file(s), indexing…`;
-      e.target.reset();
-      poll();
-    } catch {
-      msg.hidden = false;
-      msg.textContent = "Couldn't add that path (not allowed or not found).";
-    }
+    pathInput.value = "";
+    addPath(path);
   });
 
   render();

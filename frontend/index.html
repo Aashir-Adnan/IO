@@ -9,18 +9,16 @@
 </head>
 <body>
   <div class="win">
-    <header class="titlebar">
-      <span class="dots"><i></i><i></i><i></i></span>
-      <span class="mono ver">IO 1.4</span>
-      <span class="grow"></span>
-      <span id="status" class="mono">LOCAL &middot; ENCRYPTED</span>
-    </header>
     <div class="body">
       <nav class="rail" id="rail">
-        <div class="rail-orb"><span></span></div>
+        <div class="rail-top">
+          <span class="rail-brand">IO</span>
+          <button class="rail-toggle" id="railtoggle" title="Collapse sidebar" aria-label="Collapse sidebar"></button>
+        </div>
         <div class="rail-nav" id="railnav"></div>
         <span class="grow"></span>
         <button class="rail-btn" data-nav="settings" title="Settings" aria-label="Settings"></button>
+        <div class="rail-status mono" id="status"></div>
       </nav>
       <aside class="drawer" id="drawer" hidden></aside>
       <main id="view"></main>

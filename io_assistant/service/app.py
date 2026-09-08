@@ -428,9 +428,20 @@ def create_app(
         else Path(__file__).resolve().parents[2] / "frontend"
     )
     if frontend.is_dir():
+        class _NoCacheStatic(StaticFiles):
+            # local-first desktop app: assets must always reflect the current
+            # build, never a stale browser cache.
+            def is_not_modified(self, response_headers, request_headers):
+                return False
+
+            async def get_response(self, path, scope):
+                resp = await super().get_response(path, scope)
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
+
         app.mount(
             "/app",
-            StaticFiles(directory=str(frontend), html=True),
+            _NoCacheStatic(directory=str(frontend), html=True),
             name="frontend",
         )
 

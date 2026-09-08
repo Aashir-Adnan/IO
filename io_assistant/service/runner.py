@@ -95,6 +95,16 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
             f"{url} in a browser instead."
         ) from e
 
+    class _Api:
+        def pick_folder(self):
+            try:
+                res = window.create_file_dialog(webview.FOLDER_DIALOG)
+            except Exception:
+                return None
+            if not res:
+                return None
+            return res[0] if isinstance(res, (list, tuple)) else res
+
     geo = _load_geometry()
     window = webview.create_window(
         title, url,
@@ -103,6 +113,7 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         min_size=(960, 640),
         fullscreen=fullscreen and not geo,
         text_select=True,
+        js_api=_Api(),
     )
 
     def _menu():  # pragma: no cover - GUI

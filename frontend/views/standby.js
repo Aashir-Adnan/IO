@@ -8,27 +8,39 @@ function greet(clockIso) {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+const fmtTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const fmtDate = (d) => d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+
 export async function mount(root, ctx) {
   const status = document.getElementById("status");
   if (status) status.textContent = "LOCAL · ENCRYPTED";
 
   root.innerHTML = `
     <section class="standby">
-      <div class="standby-head">
-        <div>
-          <div class="mono kicker">STANDBY</div>
-          <h1 class="standby-greet"></h1>
-        </div>
-        <div class="statrow mono"></div>
+      <div class="standby-clock">
+        <div class="standby-time"></div>
+        <div class="standby-date"></div>
       </div>
+      <h1 class="standby-greet"></h1>
       <div class="standby-orb"></div>
       <div class="standby-dock">
+        <div class="standby-stats"></div>
         <div class="chips"></div>
         <div class="standby-composer"></div>
       </div>
     </section>`;
 
-  const orb = Orb(root.querySelector(".standby-orb"), { mode: "standby", size: 320 });
+  const orb = Orb(root.querySelector(".standby-orb"), { mode: "standby", size: 300 });
+
+  const timeEl = root.querySelector(".standby-time");
+  const dateEl = root.querySelector(".standby-date");
+  const tick = () => {
+    const now = new Date();
+    timeEl.textContent = fmtTime(now);
+    dateEl.textContent = fmtDate(now);
+  };
+  tick();
+  const timer = setInterval(tick, 15000);
 
   let data = { greeting_name: "there", stats: {}, chips: [] };
   try { data = await ctx.api.standby(); } catch { /* offline */ }
@@ -37,12 +49,10 @@ export async function mount(root, ctx) {
     `${greet(data.stats.clock)}, ${data.greeting_name}.`;
 
   const s = data.stats || {};
-  const clock = s.clock ? new Date(s.clock) : new Date();
-  root.querySelector(".statrow").innerHTML = [
+  root.querySelector(".standby-stats").innerHTML = [
     `<span><b>${s.memories ?? 0}</b> MEMORIES</span>`,
-    `<span><b>${s.recall_ms ?? 0}</b> ms RECALL</span>`,
-    `<span><b>${clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</b></span>`,
-  ].join("<span class='sep'>·</span>");
+    `<span><b>${s.recall_ms ?? 0}</b> MS RECALL</span>`,
+  ].join("");
 
   const chips = root.querySelector(".chips");
   chips.innerHTML = (data.chips || []).map((c) =>
@@ -66,5 +76,5 @@ export async function mount(root, ctx) {
     }
   };
   document.addEventListener("keydown", onKey);
-  root._cleanup = () => document.removeEventListener("keydown", onKey);
+  root._cleanup = () => { clearInterval(timer); document.removeEventListener("keydown", onKey); orb.destroy(); };
 }
