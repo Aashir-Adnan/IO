@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import secrets
+import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 from fastapi.staticfiles import StaticFiles
 
@@ -19,7 +21,10 @@ from io_assistant.service.schemas import (
     NewConversationOut,
     TurnResponse,
     UtteranceIn,
+    VoiceHealthOut,
+    VoiceOut,
 )
+from io_assistant.service.voice import VoiceModels, VoiceUnavailable
 
 __all__ = ["create_app"]
 
@@ -30,6 +35,7 @@ def create_app(
     orchestrator=None,
     engine=None,
     conversations: ConversationStore | None = None,
+    voice=None,
 ) -> FastAPI:
     app = FastAPI(title="io", version="0.1.0")
 
@@ -43,6 +49,7 @@ def create_app(
     app.state.engine = eng
     app.state.orchestrator = orchestrator
     app.state.conversations = store
+    app.state.voice = voice or VoiceModels(config)
     app.state.pending: dict[str, PendingStore] = {}
     app.state.recall_ms = 0
 
@@ -103,6 +110,48 @@ def create_app(
     @app.post("/utterance", response_model=TurnResponse)
     def utterance(body: UtteranceIn):
         return _run(body)
+
+    @app.get("/voice/health", response_model=VoiceHealthOut)
+    def voice_health():
+        return app.state.voice.health()
+
+    @app.post("/voice", response_model=VoiceOut)
+    def voice_turn(
+        audio: UploadFile,
+        conversation_id: int | None = Form(None),
+        speak: str = Form("1"),
+    ):
+        try:
+            transcriber = app.state.voice.transcriber()
+        except VoiceUnavailable as e:
+            raise HTTPException(status_code=503, detail=e.reason)
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(audio.file.read())
+            path = tmp.name
+        tr = transcriber.transcribe(path)
+        if not tr.text.strip():
+            raise HTTPException(status_code=422, detail="no speech")
+
+        turn = _run(UtteranceIn(
+            text=tr.text, source="voice", conversation_id=conversation_id
+        ))
+
+        audio_b64 = None
+        if speak == "1" and turn.kind not in ("error",):
+            try:
+                data = app.state.voice.speaker().synthesize(turn.text)
+                audio_b64 = base64.b64encode(data).decode("ascii")
+            except VoiceUnavailable:
+                audio_b64 = None
+
+        data = turn.model_dump()
+        data["audio_b64"] = audio_b64
+        return VoiceOut(
+            **data,
+            transcript=tr.text,
+            transcript_confidence=tr.confidence,
+        )
 
     @app.get("/conversations", response_model=list[ConversationSummary])
     def conversations_list():

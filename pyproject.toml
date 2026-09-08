@@ -23,6 +23,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "pynput>=1.8.2",
     "webrtcvad-wheels>=2.0.14",
+    "python-multipart>=0.0.32",
 ]
 
 [project.scripts]
