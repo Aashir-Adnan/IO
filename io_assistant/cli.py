@@ -60,6 +60,30 @@ def repl() -> None:
 
 
 @app.command()
+def serve() -> None:
+    """Run the local FastAPI service (no window)."""
+    from io_assistant.service.runner import run_service
+
+    config = load_config()
+    print(f"io service on http://{config.service.host}:{config.service.port}")
+    run_service(config, block=True)
+
+
+@app.command()
+def run() -> None:
+    """Start the service and open the desktop window."""
+    from io_assistant.service.runner import open_window, run_service
+
+    config = load_config()
+    server, _thread = run_service(config, block=False)
+    url = f"http://{config.service.host}:{config.service.port}/app/"
+    try:
+        open_window(url)
+    finally:
+        server.should_exit = True
+
+
+@app.command()
 def doctor() -> None:
     """Environment diagnostics (Plan 4)."""
     print("io doctor: not implemented yet (Plan 4)")
