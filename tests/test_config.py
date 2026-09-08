@@ -157,7 +157,7 @@ def test_voice_and_capture_defaults(tmp_path):
         confidence_gate_threshold = 0.6
     """)
     cfg = load_config(p)
-    assert cfg.voice.tts_voice == "en_US-amy-medium"
+    assert cfg.voice.tts_voice == "en_US-hfc_female-medium"
     assert cfg.capture.passive is False
     from io_assistant.config import whisper_model_for
     assert whisper_model_for("light") == "base"
