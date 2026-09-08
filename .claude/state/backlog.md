@@ -1,5 +1,18 @@
 # Backlog (highest priority on top)
 
+- **Phase 2 — Files & Media** (specs written 2026-09-08):
+  - Spec A `docs/superpowers/specs/2026-09-08-io-phase-2-file-index-design.md`
+    — file index + text exploration. `file_nodes`/`file_chunks`/`file_edges`/
+    `file_entity_links` (mig 0004), `io_assistant/files/`, `file` router intent,
+    `summarize_file`/`answer_from_files`, `FilesCard`, `/files*` routes, `io
+    files` CLI, Files rail view. **Building now.**
+  - Spec C `…-io-phase-2-media-library-design.md` — gallery view, thumbnails,
+    in-app image/video viewer, per-item captioning → entity links (mig 0005,
+    `file_captions`). Depends on A.
+  - Spec B `…-io-phase-2-desktop-packaging-design.md` — `IO.exe` (PyInstaller),
+    logo→`.ico`, single-instance lock. Independent. Needs `assets/io-logo.png`
+    from the user.
+
 - ~~Plan 6: Nocturne desktop client~~ — DONE 2026-09-08 (see completed.md).
   Phase 1.5 complete.
 - Phase 1.5 deferred: state 1d task runner (agent loop + approval gates + live
