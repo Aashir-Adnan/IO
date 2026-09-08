@@ -1,5 +1,18 @@
 # Completed (newest first)
 
+## 2026-09-08 — Plan 4: voice (speech in, speech out)
+`docs/superpowers/plans/2026-09-08-io-phase-4-voice.md`, 7 tasks. Spec §6.1
+addendum (spoken output). `io_assistant/speak/` — `flatten_markdown()` +
+`Speaker` protocol + `PiperSpeaker` (en_US-amy-medium female, degrades to
+text-only). `transcribe/` — `Transcriber` + `WhisperTranscriber` (size from
+profile). `capture/` — `segment_stream()` VAD, `build_utterance()`, audio/hotkey
+seams. `voice/` — `ServiceClient` + `VoiceLoop` (`handle_wav`: transcribe →
+`POST /utterance` → speak; SpeakError non-fatal). `io listen` (push-to-talk /
+`--passive`), real `io doctor` (7 checks). Deps: piper-tts, faster-whisper,
+sounddevice, numpy, pynput, webrtcvad-wheels. Full suite 170 pass / 5 skipped
+(3 ollama-anthropic + 2 voice opt-in). `io doctor` smoke-run. The real audio
+loop needs a mic + downloaded models to verify end-to-end.
+
 ## 2026-09-08 — Plan 3: local service + desktop shell
 `docs/superpowers/plans/2026-09-08-io-phase-3-service-and-desktop.md`, 6 tasks.
 `io_assistant/service/`: `create_app()` (FastAPI, one Orchestrator), `/health`,

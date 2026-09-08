@@ -66,7 +66,12 @@
   deliberately-vendored lib); run `orchestrator.handle` off the event-loop
   thread; `GET /utterances` history endpoint; `io run` window not yet exercised
   on a real display.
-- Plan 4: voice — faster-whisper transcribe (in), Piper TTS (out, mandatory,
-  female voice — NEW requirement beyond spec §6), push-to-talk, passive mode,
-  `io doctor`. TTS engine decided 2026-09-08: Piper (local, offline, en_US
-  female voice). Needs a spec addendum for spoken output.
+- ~~Plan 4: voice~~ — DONE 2026-09-08 (see completed.md). Spec §6.1 added.
+- Plan 4 follow-ups: the real Whisper/Piper adapters + mic/hotkey/playback seams
+  need a machine with audio + the models to verify end-to-end (`io listen` full
+  loop, transcription accuracy, hotkey capture, playback) — run
+  `IO_VOICE_TESTS=1 uv run pytest -m voice` and `uv run io listen` there. Also:
+  download the default Piper voice; token-streamed TTS (needs `/ws` streaming);
+  wake-word; barge-in; input/output device selection in config; true
+  hold-to-talk (pynput GlobalHotKeys is toggle-only — current impl is
+  press-to-start / press-to-stop).

@@ -42,8 +42,30 @@ both models pulled, both databases reachable, pgvector present in both.
 
 ```
 uv run alembic upgrade head
-uv run io repl
+uv run io repl                 # typed REPL
+uv run io serve                # local FastAPI service (127.0.0.1:8765)
+uv run io run                  # service + desktop window (/app)
 ```
+
+## Voice (Plan 4)
+
+```
+# one-time: download a Piper voice (female US English)
+uv run python -m piper.download_voices en_US-amy-medium --data-dir $HOME\.local\share\io\piper
+
+uv run io serve                # in one shell
+uv run io listen               # in another — hotkey to talk, hear the answer
+uv run io listen --passive     # hands-free VAD mode
+```
+
+## Go / no-go
+
+```
+uv run io doctor
+```
+Checks Postgres, pgvector, the backend (Ollama model or Anthropic credential),
+embeddings, faster-whisper, Piper + the voice model file, and VRAM headroom.
+Exit 0 only when everything the current config needs is present.
 
 ## Ollama resource env vars
 
