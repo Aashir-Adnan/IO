@@ -29,6 +29,19 @@ def test_files_card_shape():
 
 
 @requires_db
+def test_file_captions_table_and_thumb_path(db):
+    from io_assistant.db import models as m
+    n = m.FileNode(path="/m/pic.jpg", path_key="/m/pic.jpg", kind="file",
+                   media_kind="image", status="ok", thumb_path="/t/abc.webp")
+    db.add(n)
+    db.flush()
+    assert n.thumb_path == "/t/abc.webp"
+    db.add(m.FileCaption(file_id=n.id, text="me and Nafay", source="text"))
+    db.flush()
+    assert db.query(m.FileCaption).one().text == "me and Nafay"
+
+
+@requires_db
 def test_file_tables_exist(db):
     n = m.FileNode(path="/tmp/a.md", path_key="/tmp/a.md", kind="file",
                    status="pending")
