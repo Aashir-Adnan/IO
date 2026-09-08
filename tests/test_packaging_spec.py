@@ -18,3 +18,13 @@ def test_spec_datas_paths_exist():
         assert (ROOT / src).exists(), f"missing spec data source: {src}"
     # the generated asset has a real source to derive from
     assert (ROOT / "assets" / "io-logo.png").exists()
+
+
+def test_spec_bundles_voice():
+    ns = runpy.run_path(str(ROOT / "packaging" / "io.spec"),
+                        run_name="__spec_probe__")
+    ex = set(ns["EXCLUDES"])
+    for mod in ("webrtcvad", "sounddevice", "faster_whisper", "piper",
+                "ctranslate2", "onnxruntime"):
+        assert mod not in ex, f"{mod} is still excluded from the bundle"
+    assert any("hooks" in p for p in ns["HOOKSPATH"])

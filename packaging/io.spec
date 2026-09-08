@@ -4,8 +4,10 @@
 Build:  uv run pyinstaller packaging/io.spec --noconfirm
 Output: dist/IO/IO.exe  (one-dir bundle)
 
-Not bundled: PostgreSQL (expects Docker / a user database_url) and the
-Whisper/Piper models (download at first use to ~/.local/share/io).
+Bundles every feature — text, files, media gallery, and voice. Not bundled:
+PostgreSQL (the exe starts its own pgvector container via docker compose on
+launch) and the Whisper/Piper model files (download at first use to
+~/.local/share/io).
 """
 from pathlib import Path
 
@@ -21,6 +23,8 @@ DATAS = [
     ("frontend", "frontend"),
     ("config.toml", "."),
     ("alembic.ini", "."),
+    ("docker-compose.yml", "."),
+    ("scripts/initdb", "scripts/initdb"),
     ("io_assistant/db/migrations", "io_assistant/db/migrations"),
     ("io_assistant/prompts", "io_assistant/prompts"),
     ("assets/io-512.png", "assets"),
@@ -42,25 +46,42 @@ HIDDEN_IMPORTS = [
     "PIL.Image",
 ]
 
-# The Task-5 test imports this file with run_name="__spec_probe__" and reads
-# only ENTRY / DATAS. Analysis/PYZ/EXE/COLLECT exist only inside PyInstaller.
+# voice — lazy-imported by `io listen` and the /voice route; bundle them so the
+# packaged app is full-featured (models still download on first use).
+_VOICE_HIDDEN = [
+    "webrtcvad", "sounddevice", "pynput", "pynput.keyboard", "pynput.mouse",
+    "faster_whisper", "ctranslate2", "onnxruntime", "av",
+    "piper", "piper.voice", "piper.phonemize_espeak",
+]
+
+EXCLUDES = ["reportlab", "pytest", "pyinstaller", "torch"]
+HOOKSPATH = [str(ROOT / "packaging" / "hooks")]
+
+# The probe test imports this file with run_name="__spec_probe__" and reads only
+# the module-level names above. Analysis/PYZ/EXE/COLLECT + PyInstaller.utils
+# exist only inside a real PyInstaller run.
 if __name__ != "__spec_probe__":
+    from PyInstaller.utils.hooks import collect_all
+
+    _binaries = []
+    _datas = [(str(ROOT / s), d) for s, d in DATAS]
+    _hidden = list(HIDDEN_IMPORTS) + list(_VOICE_HIDDEN)
+    for pkg in ("piper", "faster_whisper", "sounddevice", "_sounddevice_data",
+                "ctranslate2", "onnxruntime", "av"):
+        d, b, h = collect_all(pkg)
+        _datas += d
+        _binaries += b
+        _hidden += h
+
     a = Analysis(
         [str(ROOT / ENTRY)],
         pathex=[str(ROOT)],
-        binaries=[],
-        datas=[(str(ROOT / s), d) for s, d in DATAS],
-        hiddenimports=HIDDEN_IMPORTS,
-        hookspath=[],
+        binaries=_binaries,
+        datas=_datas,
+        hiddenimports=_hidden,
+        hookspath=HOOKSPATH,
         runtime_hooks=[],
-        # v1 packaged app is text + files + gallery. Voice (io listen, POST
-        # /voice) needs the full uv environment — these heavy/native deps are
-        # lazy-imported and excluded from the bundle; /voice degrades to 503.
-        excludes=[
-            "reportlab", "pytest", "pyinstaller",
-            "webrtcvad", "webrtcvad_wheels", "sounddevice", "pynput",
-            "faster_whisper", "piper", "ctranslate2", "onnxruntime", "torch",
-        ],
+        excludes=EXCLUDES,
         noarchive=False,
     )
     pyz = PYZ(a.pure)
