@@ -53,6 +53,13 @@ class CaptureConfig(BaseModel):
     sample_rate: int = 16000
     vad_aggressiveness: int = 2
 
+class UiConfig(BaseModel):
+    name: str = ""            # greeting name; "" -> the OS user at read time
+    fullscreen: bool = True
+    auto_speak: Literal["voice", "always", "never"] = "voice"
+    typing_cps: int = 45
+    min_think_ms: int = 600
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -61,6 +68,7 @@ class Config(BaseModel):
     service: ServiceConfig = ServiceConfig()
     voice: VoiceConfig = VoiceConfig()
     capture: CaptureConfig = CaptureConfig()
+    ui: UiConfig = UiConfig()
 
 _WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
 

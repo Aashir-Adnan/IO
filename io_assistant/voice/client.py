@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import httpx
 
-from io_assistant.service.schemas import UtteranceIn, UtteranceOut
-
 __all__ = ["ServiceClient"]
 
 
@@ -20,9 +18,23 @@ class ServiceClient:
         except Exception:
             return False
 
-    def send(self, u: UtteranceIn) -> UtteranceOut:
+    def voice_health(self) -> dict:
+        try:
+            return self._http.get(f"{self._base}/voice/health", timeout=3).json()
+        except Exception as e:
+            return {"whisper": False, "piper": False, "voice": "?", "reason": str(e)}
+
+    def send_voice(
+        self, wav_bytes: bytes, *, conversation_id: int | None = None, speak: bool = True
+    ) -> dict:
         r = self._http.post(
-            f"{self._base}/utterance", json=u.model_dump(), timeout=120
+            f"{self._base}/voice",
+            files={"audio": ("turn.wav", wav_bytes, "audio/wav")},
+            data={
+                "speak": "1" if speak else "0",
+                **({"conversation_id": str(conversation_id)} if conversation_id else {}),
+            },
+            timeout=180,
         )
         r.raise_for_status()
-        return UtteranceOut.model_validate(r.json())
+        return r.json()

@@ -1,35 +1,57 @@
 from __future__ import annotations
 
+import base64
+import io
 import sys
 import tempfile
 import wave
-
-from io_assistant.capture.session import build_utterance
-from io_assistant.speak.interface import SpeakError
 
 __all__ = ["VoiceLoop"]
 
 
 class VoiceLoop:
-    def __init__(self, config, *, transcriber, speaker, client):
+    """Local capture + playback around the service's POST /voice. Transcription
+    and synthesis happen server-side."""
+
+    def __init__(self, config, *, client):
         self._cfg = config
-        self._t = transcriber
-        self._s = speaker
         self._client = client
         self._rate = config.capture.sample_rate
+        self._conversation_id = None
 
     def handle_wav(self, wav_path: str) -> str:
-        tr = self._t.transcribe(wav_path)
+        with open(wav_path, "rb") as f:
+            wav = f.read()
         try:
-            u = build_utterance(tr.text, tr.confidence)
-        except ValueError:
+            reply = self._client.send_voice(
+                wav, conversation_id=self._conversation_id,
+                speak=self._cfg.ui.auto_speak != "never",
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[voice] turn failed: {e}", file=sys.stderr)
             return ""
-        reply = self._client.send(u)
+        self._conversation_id = reply.get("conversation_id", self._conversation_id)
+        if reply.get("transcript"):
+            print(f"you: {reply['transcript']}")
+        print(f"io: {reply.get('text', '')}")
+        if reply.get("audio_b64"):
+            self._play(reply["audio_b64"])
+        return reply.get("text", "")
+
+    def _play(self, audio_b64: str) -> None:  # pragma: no cover - needs a device
         try:
-            self._s.say(reply.message)
-        except SpeakError as e:
-            print(f"[voice] speech output unavailable: {e}", file=sys.stderr)
-        return reply.message
+            import numpy as np
+            import sounddevice as sd
+        except ImportError:
+            return
+        with wave.open(io.BytesIO(base64.b64decode(audio_b64)), "rb") as wf:
+            rate = wf.getframerate()
+            frames = wf.readframes(wf.getnframes())
+        try:
+            sd.play(np.frombuffer(frames, dtype=np.int16), rate)
+            sd.wait()
+        except Exception as e:
+            print(f"[voice] playback failed: {e}", file=sys.stderr)
 
     def _pcm_to_wav(self, pcm: bytes) -> str:
         path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
@@ -80,7 +102,7 @@ class VoiceLoop:
 
         from io_assistant.capture.vad import segment_stream
 
-        print("Passive mode — everything you say is routed. Ctrl-C to quit.")
+        print("Passive mode - everything you say is routed. Ctrl-C to quit.")
         frame = int(self._rate * 0.03)
 
         def frames():

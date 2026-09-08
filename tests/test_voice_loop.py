@@ -1,52 +1,44 @@
 from io_assistant.voice.loop import VoiceLoop
-from io_assistant.service.schemas import UtteranceOut
 
 
 class _Client:
-    def __init__(self, out):
-        self.out = out
+    def __init__(self, reply):
+        self.reply = reply
         self.sent = []
 
-    def send(self, u):
-        self.sent.append(u)
-        return self.out
-
-    def health(self):
-        return True
+    def send_voice(self, wav, *, conversation_id=None, speak=True):
+        self.sent.append((wav, speak))
+        return self.reply
 
 
-def test_handle_wav_speaks_reply(config, fake_transcriber, fake_speaker):
-    fake_transcriber.set_text("what work do I have today")
-    fake_transcriber.set_confidence(0.9)
-    client = _Client(UtteranceOut(intent="query", message="Two tasks are open."))
-    loop = VoiceLoop(config, transcriber=fake_transcriber, speaker=fake_speaker, client=client)
-    msg = loop.handle_wav("x.wav")
-    assert msg == "Two tasks are open."
-    assert fake_speaker.said == ["Two tasks are open."]
-    assert client.sent[0].text == "what work do I have today"
-    assert client.sent[0].source == "voice"
+def test_handle_wav_prints_reply(config, tmp_path, capsys):
+    wav = tmp_path / "x.wav"
+    wav.write_bytes(b"RIFF0000WAVEfmt ")
+    client = _Client({"transcript": "what work do I have",
+                      "text": "Two tasks are open.", "kind": "answer",
+                      "conversation_id": 3, "audio_b64": None})
+    out = VoiceLoop(config, client=client).handle_wav(str(wav))
+    assert out == "Two tasks are open."
+    printed = capsys.readouterr().out
+    assert "what work do I have" in printed and "Two tasks are open." in printed
+    assert client.sent and client.sent[0][1] is True  # speak (auto_speak=voice)
 
 
-def test_handle_wav_empty_transcript_is_silent(config, fake_transcriber, fake_speaker):
-    fake_transcriber.set_text("   ")
-    client = _Client(UtteranceOut(intent="unknown", message="?"))
-    loop = VoiceLoop(config, transcriber=fake_transcriber, speaker=fake_speaker, client=client)
-    assert loop.handle_wav("x.wav") == ""
-    assert fake_speaker.said == [] and client.sent == []
+def test_handle_wav_swallows_failure(config, tmp_path):
+    wav = tmp_path / "x.wav"
+    wav.write_bytes(b"RIFF0000WAVEfmt ")
+
+    class C:
+        def send_voice(self, *a, **k):
+            raise RuntimeError("422 no speech")
+
+    assert VoiceLoop(config, client=C()).handle_wav(str(wav)) == ""
 
 
-def test_speak_failure_is_not_fatal(config, fake_transcriber):
-    from io_assistant.speak.interface import SpeakError
-
-    fake_transcriber.set_text("hello")
-
-    class BadSpeaker:
-        def say(self, t):
-            raise SpeakError("no audio device")
-
-        def synthesize(self, t):
-            return b""
-
-    client = _Client(UtteranceOut(intent="store", message="Stored."))
-    loop = VoiceLoop(config, transcriber=fake_transcriber, speaker=BadSpeaker(), client=client)
-    assert loop.handle_wav("x.wav") == "Stored."
+def test_conversation_id_is_carried(config, tmp_path):
+    wav = tmp_path / "x.wav"
+    wav.write_bytes(b"RIFF0000WAVEfmt ")
+    client = _Client({"text": "ok", "kind": "ack", "conversation_id": 9})
+    loop = VoiceLoop(config, client=client)
+    loop.handle_wav(str(wav))
+    assert loop._conversation_id == 9
