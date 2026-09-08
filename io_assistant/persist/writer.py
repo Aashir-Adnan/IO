@@ -107,6 +107,10 @@ def persist_store(
         for phrase in (rec.when_phrase, rec.due_phrase):
             if phrase and not ground(phrase, now).ok:
                 gate_reasons.append(f"couldn't ground the date '{phrase}'")
+        if rec.recurrence_phrase and to_rrule(rec.recurrence_phrase) is None:
+            gate_reasons.append(
+                f"couldn't read the repeat rule '{rec.recurrence_phrase}'"
+            )
 
     for occ in extraction.occasions:
         if occ.date_phrase and not ground(occ.date_phrase, now).ok:
@@ -178,6 +182,24 @@ def _write(
             )
             new_entities.append((etype, name))
 
+    def _ensure(etype: str, raw_name: str) -> int | None:
+        """Resolve/create an entity referenced only inside a record (not in the
+        top-level people/places/items lists), so its link is not dropped."""
+        if not raw_name:
+            return None
+        key = (etype, raw_name.lower())
+        if key in entity_ids:
+            return entity_ids[key]
+        outcome = resolver.resolve(etype, raw_name, [])
+        if outcome.entity_id is not None:
+            entity_ids[key] = outcome.entity_id
+        elif getattr(outcome, "ambiguous", False):
+            entity_ids[key] = outcome.candidate_id
+        else:
+            entity_ids[key] = resolver.create(etype, raw_name, [])
+            new_entities.append((etype, raw_name))
+        return entity_ids[key]
+
     # Occasions: dedupe by case-insensitive name.
     occasion_ids: dict[str, int] = {}
     for occ in extraction.occasions:
@@ -209,9 +231,7 @@ def _write(
         )
         assigned_by_id = None
         if rec.assigned_by:
-            assigned_by_id = entity_ids.get(
-                ("person", rec.assigned_by.lower())
-            )
+            assigned_by_id = _ensure("person", rec.assigned_by)
 
         row = m.Record(
             kind=kind,
@@ -234,15 +254,15 @@ def _write(
         record_ids.append(row.id)
 
         for pname in rec.people:
-            pid = entity_ids.get(("person", pname.lower()))
+            pid = _ensure("person", pname)
             if pid is not None:
                 session.add(m.RecordPerson(record_id=row.id, person_id=pid))
         for plname in rec.places:
-            plid = entity_ids.get(("place", plname.lower()))
+            plid = _ensure("place", plname)
             if plid is not None:
                 session.add(m.RecordPlace(record_id=row.id, place_id=plid))
         for iname in rec.items:
-            iid = entity_ids.get(("item", iname.lower()))
+            iid = _ensure("item", iname)
             if iid is not None:
                 session.add(m.RecordItem(record_id=row.id, item_id=iid))
         for oname in rec.occasions:

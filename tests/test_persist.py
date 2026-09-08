@@ -6,7 +6,8 @@ from tests.conftest import requires_db
 from io_assistant.persist.writer import persist_store, PersistError
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.models_domain import (
-    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedRecord, ExtractedOccasion)
+    ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedItem,
+    ExtractedRecord, ExtractedOccasion)
 from io_assistant.db import models as m
 
 
@@ -183,3 +184,46 @@ def test_repeated_name_in_extraction_creates_one_entity(db, config):
     assert db.query(m.Person).count() == 1
     assert out.new_entities == [("person", "Nafay")]
     assert db.query(m.RecordPerson).filter_by(record_id=out.record_ids[0]).count() == 1
+
+
+@requires_db
+def test_record_only_person_still_links(db, config):
+    """A person named only inside rec.people (not the top-level people[]) must
+    still be resolved and linked, not silently dropped."""
+    ext = ExtractionResult(records=[ExtractedRecord(
+        kind="event", title="lunch", when_phrase="today",
+        people=["Sana"], confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="lunch with Sana", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    rid = out.record_ids[0]
+    assert db.query(m.RecordPerson).filter_by(record_id=rid).count() == 1
+    assert db.query(m.Person).filter_by(canonical_name="Sana").count() == 1
+
+
+@requires_db
+def test_record_item_link_persists(db, config):
+    ext = ExtractionResult(
+        items=[ExtractedItem(name="drill", aliases=[], confidence=0.9)],
+        records=[ExtractedRecord(kind="task", title="return the drill",
+                                 items=["drill"], confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="return the drill", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    rid = out.record_ids[0]
+    assert db.query(m.RecordItem).filter_by(record_id=rid).count() == 1
+
+
+@requires_db
+def test_unreadable_recurrence_gates(db, config):
+    ext = ExtractionResult(records=[ExtractedRecord(
+        kind="chore", title="water plants",
+        recurrence_phrase="whenever the soil looks dry", confidence=0.9)])
+    out = persist_store(db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="water the plants when dry", source="text", captured_at=NOW,
+        extraction=ext, now=NOW, confidence_gate=0.6)
+    assert out.gated is True
+    assert any("repeat rule" in r for r in out.gate_reasons)
