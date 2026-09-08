@@ -84,6 +84,8 @@ if __name__ != "__spec_probe__":
         excludes=EXCLUDES,
         noarchive=False,
     )
+    import os as _os
+
     pyz = PYZ(a.pure)
     exe = EXE(
         pyz,
@@ -91,7 +93,7 @@ if __name__ != "__spec_probe__":
         [],
         exclude_binaries=True,
         name="IO",
-        console=False,
+        console=_os.environ.get("IO_BUILD_CONSOLE") == "1",  # debug builds
         icon=str(ROOT / "assets" / "io.ico"),
     )
     coll = COLLECT(exe, a.binaries, a.datas, name="IO")

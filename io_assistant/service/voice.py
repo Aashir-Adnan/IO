@@ -32,11 +32,22 @@ class VoiceModels:
                 raise VoiceUnavailable(f"speech-to-text unavailable: {e}") from e
         return self._transcriber
 
+    def _ensure_voice_model(self) -> None:
+        """Download the configured Piper voice on first use if it's missing."""
+        path = self._config.voice.resolved_voice_path
+        if path.exists():
+            return
+        from piper.download_voices import download_voice
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        download_voice(self._config.voice.tts_voice, path.parent)
+
     def speaker(self):
         if self._speaker is None:
             try:
                 from io_assistant.speak.piper import PiperSpeaker
 
+                self._ensure_voice_model()
                 sp = PiperSpeaker(self._config)
                 sp._check_voice()  # fail now, not on first synthesize
                 self._speaker = sp

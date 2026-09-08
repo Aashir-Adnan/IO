@@ -65,7 +65,8 @@ def ensure_database(config: Config, *, start_container: bool = True) -> None:
         compose = project_root() / "docker-compose.yml"
         try:
             subprocess.run(
-                ["docker", "compose", "-f", str(compose), "up", "-d", "db"],
+                ["docker", "compose", "-p", "io", "-f", str(compose),
+                 "up", "-d", "db"],
                 check=True, capture_output=True, text=True, timeout=180)
         except Exception as e:  # noqa: BLE001
             detail = getattr(e, "stderr", "") or str(e)
