@@ -44,6 +44,10 @@ def run_service(config: Config, *, block: bool = True):
             host=config.service.host,
             port=config.service.port,
             log_level="warning",
+            # a windowed PyInstaller build has no stdout — uvicorn's colourised
+            # log formatter calls sys.stdout.isatty() and crashes. Disable its
+            # dictConfig-based logging entirely.
+            log_config=None,
         )
     )
     if block:
