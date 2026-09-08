@@ -11,6 +11,10 @@ instruct_model = "llama3.2:3b"   # overridden per-profile in load_config
 embed_model = "nomic-embed-text"
 num_thread = 0              # 0 = auto (physical cores - 2)
 
+[service]
+host = "127.0.0.1"
+port = 8765
+
 [resolver]
 fuzzy_threshold = 92
 vector_similarity_threshold = 0.85

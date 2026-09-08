@@ -28,11 +28,17 @@ class ResolverConfig(BaseModel):
     vector_similarity_threshold: float
     confidence_gate_threshold: float
 
+class ServiceConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8765
+    frontend_dir: str | None = None
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
     backend: BackendConfig
     resolver: ResolverConfig
+    service: ServiceConfig = ServiceConfig()
 
 def _repo_root_config() -> Path:
     return Path(__file__).resolve().parent.parent / "config.toml"

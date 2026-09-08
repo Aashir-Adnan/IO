@@ -115,3 +115,25 @@ def test_embedding_dim_must_match_orm(tmp_path):
     """)
     with pytest.raises(ConfigError, match="embedding_dim"):
         load_config(p)
+
+def test_service_section_defaults(tmp_path):
+    p = write_toml(tmp_path, """
+        database_url = "postgresql+psycopg://u:p@localhost/db"
+        embedding_dim = 768
+        [backend]
+        provider = "local"
+        profile = "light"
+        anthropic_model = "claude-haiku-4-5"
+        ollama_url = "http://localhost:11434"
+        ollama_keep_alive = "30s"
+        instruct_model = "llama3.2:3b"
+        embed_model = "nomic-embed-text"
+        num_thread = 0
+        [resolver]
+        fuzzy_threshold = 92
+        vector_similarity_threshold = 0.85
+        confidence_gate_threshold = 0.6
+    """)
+    cfg = load_config(p)
+    assert cfg.service.host == "127.0.0.1"
+    assert cfg.service.port == 8765
