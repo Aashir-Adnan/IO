@@ -4,7 +4,7 @@
 (`origin/main` = `41aaaa9`).
 
 **Phase 2B.1 (full-featured bundle) + UI shell polish** — on branch
-**`io-ui-shell-polish`** (from `io-phase-2b1-full-bundle` off `main`; NOT
+**`io-ui-minimal`** (from `io-phase-2b1-full-bundle` off `main`; NOT
 merged). Full suite **302 pass / 10 skip**.
 
 ### 2B.1 — full bundle
@@ -22,7 +22,7 @@ merged). Full suite **302 pass / 10 skip**.
   container, migrates, serves `/health`+`/voice/health`+`/standby`; 2nd launch
   → browser + exit (single-instance).
 
-### UI shell polish
+### UI — minimal shell
 - Removed the white titlebar; `#status` → bottom of rail.
 - Collapsible rail (216↔66 px, `localStorage["io.rail.collapsed"]`), icon+label,
   `IO` wordmark, chevron toggle.
@@ -38,7 +38,7 @@ merged). Full suite **302 pass / 10 skip**.
 **Next:**
 1. Final rebuild (`dev.ps1 build`) + `dev.ps1 install` → Desktop shortcut; a
    real fullscreen runtime check.
-2. Merge `io-ui-shell-polish` → `main`.
+2. Merge `io-ui-minimal` → `main`.
 3. Open-source readiness (on hold): default `provider = "local"`, verify local
    backend end-to-end, LICENSE, README, CI, make repo public.
 

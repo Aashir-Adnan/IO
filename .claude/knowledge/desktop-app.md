@@ -159,25 +159,39 @@ Vendored static ES modules, no build step, **no CDN** (local-first —
 - **Manual, Windows-only.** macOS/Linux packaging, code signing, `.msi`,
   auto-update, bundling the voice *models*, and an embedded Postgres are backlog.
 
-## Shell UI (Phase 1.5 + polish)
+## Shell UI (minimal, Phase 2B.1)
 
-- **No titlebar.** `frontend/index.html` is `.win > .body > (.rail | .drawer |
-  #view)` — the old white `.titlebar` is gone; window controls are the OS
-  frame. `#status` moved to the bottom of the rail.
-- **Collapsible rail.** `.rail` is 216 px expanded / 66 px collapsed
-  (`data-collapsed`), each item is icon + `.rail-label`; the toggle (`#railtoggle`)
-  persists to `localStorage["io.rail.collapsed"]`. A small `IO` wordmark tops it.
-- **Standby** = big centred clock (time + long date, ticks every 15 s) → greeting
-  → the orb → stats → chips → composer, all centre-aligned.
+- **Frameless + translucent window.** `runner.open_window` →
+  `webview.create_window(..., frameless=True, easy_drag=True, transparent=True,
+  background_color="#0E0F17")` (falls back to non-transparent on failure).
+  `body { background: rgba(14,15,23,.78) }`. The `.win::before` strip is an
+  invisible top drag region; `.winctl` (min / fullscreen / close, appear on
+  hover, top-right) call `window.pywebview.api.{minimize,toggle_fullscreen,
+  close}`. Menu also has File→Quit / View→Minimize.
+- **No rail / tabs.** `frontend/index.html` is just `#view` + a floating `#gear`
+  (bottom-left) + `#drawer` (conversation history, slides from the left) +
+  `#settings` (slides from the right). The gear opens `components/settings.js`
+  — voice toggle + **folder management** (it mounts `views/files.js`, the only
+  place to add/remove indexed folders now). `views/files.js` "Choose folder…"
+  → `window.pywebview.api.pick_folder()` (native OS dialog), text field fallback.
+- **Standby** (`views/standby.js`): a two-column stage — the orb (460 px,
+  offset left) and a big **vertically-stacked clock** (`HH` over `MM`,
+  `clamp(96px,21vw,260px)`, tabular-nums) filling the right; below it the date,
+  greeting, chips, and the **ask bar** (`.askbar`: mic + text input + explicit
+  circular send button; form submit → `sendTurn`). Alt+Space toggles the mic.
 - **Orb** (`components/orb.js`) mounts its own fixed-size `.orb` div **inside**
-  the host (never restyles the host) so flex/grid layout can't distort the
-  circle; every layer centres via `inset:0; margin:auto`.
-- **Native folder picker.** `runner.open_window` passes a `js_api` with
-  `pick_folder()` → `window.create_file_dialog(FOLDER_DIALOG)`; the Files view's
-  "Choose folder…" button calls `window.pywebview.api.pick_folder()` and falls
-  back to the text field outside pywebview.
-- Static assets are served `Cache-Control: no-store` (`_NoCacheStatic` in
-  `app.py`) so a rebuild always wins over the browser cache.
+  the host so layout can't distort the circle; layers centre via
+  `inset:0;margin:auto`.
+- **Views**: `standby` (default) / `talk` / `conversation` / `gallery`. No nav
+  chrome — you reach `conversation` by talking, `gallery` via "open the folder
+  X", and Esc / the conversation view's back button return to `standby`. The
+  conversation view has a 3-button bar (back / history-drawer / new).
+- **Typing** (`typing.js`) now steps on `setTimeout` (not rAF) and completes
+  instantly when `document.visibilityState === "hidden"` — a minimised window
+  no longer freezes a mid-reveal transcript.
+- Static assets: `Cache-Control: no-store, must-revalidate` + `Pragma:
+  no-cache`, ETag/Last-Modified stripped (`_NoCacheStatic` in `app.py`) so a
+  rebuild always wins over any cache.
 
 ## Deferred
 
