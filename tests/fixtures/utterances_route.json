@@ -19,5 +19,9 @@
   { "utterance": "What's the weather like?", "intent": "unknown" },
   { "utterance": "Tell me a joke", "intent": "unknown" },
   { "utterance": "What's the capital of France?", "intent": "unknown" },
-  { "utterance": "Can you write me an email to my landlord?", "intent": "unknown" }
+  { "utterance": "Can you write me an email to my landlord?", "intent": "unknown" },
+  { "utterance": "What does my lease say about pets?", "intent": "file" },
+  { "utterance": "Find the Granjur invoice", "intent": "file" },
+  { "utterance": "Remember my Taxes folder in Documents", "intent": "file" },
+  { "utterance": "Open the notes from the Hunza trip", "intent": "file" }
 ]

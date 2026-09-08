@@ -23,7 +23,7 @@ class LocalBackendError(Exception):
     pass
 
 
-_INTENTS = {"STORE": "store", "QUERY": "query", "UNKNOWN": "unknown"}
+_INTENTS = {"STORE": "store", "QUERY": "query", "FILE": "file", "UNKNOWN": "unknown"}
 
 
 def _load_prompt(name: str) -> str:

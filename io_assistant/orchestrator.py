@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from io_assistant.backend.embed import Embedder
 from io_assistant.backend.factory import build_backend
@@ -51,6 +52,20 @@ class Orchestrator:
         self._router = Router(self._backend)
         self._extractor = Extractor(self._backend)
         self._query = QueryPipeline(self._backend, self._embedder, config.resolver)
+
+        self._files = self._file_index = self._indexer = self._gate = None
+        if config.files.enabled:
+            from io_assistant.files.paths import AccessGate
+            from io_assistant.files.store import FileIndex
+            from io_assistant.files.index import FileIndexer
+            from io_assistant.files.search import FileSearcher
+
+            self._gate = AccessGate(config.files)
+            self._file_index = FileIndex(self._session_factory)
+            self._indexer = FileIndexer(self._embedder, self._backend,
+                                        config.files, config.resolver)
+            self._files = FileSearcher(self._embedder, self._backend,
+                                       config.files, config.resolver)
 
     def handle(
         self,
@@ -141,6 +156,24 @@ class Orchestrator:
                 cards=query_cards(session, answer),
                 intent_kind="answer", shape=answer.shape,
             )
+
+        if intent == "file":
+            session.add(
+                m.Utterance(
+                    text=text,
+                    source=source,
+                    captured_at=captured_at,
+                    resolved_intent="file",
+                )
+            )
+            session.flush()
+            if not self._config.files.enabled:
+                return HandleResult(
+                    "file", None,
+                    "I can't open files yet — enable [files] in config.toml first.",
+                    intent_kind="unknown",
+                )
+            return self._file_turn(session, text, now, history)
 
         # intent == "store"
         extraction = self._extractor.run(text, now)
@@ -245,6 +278,61 @@ class Orchestrator:
         return HandleResult(
             "store", result, message,
             cards=store_cards(session, result), intent_kind="ack",
+        )
+
+    def _file_turn(self, session, text: str, now, history) -> HandleResult:
+        from io_assistant.files.cards import files_card
+        from io_assistant.files.command import classify_file_command
+
+        cmd = classify_file_command(text)
+        if cmd.action == "register":
+            return self._file_register(session, cmd)
+        answer = self._files.search(session, text, now, gate=self._gate,
+                                    context=history)
+        return HandleResult(
+            "file", None, answer.text, cards=[files_card(answer)],
+            intent_kind="files", shape=answer.shape,
+        )
+
+    def _file_register(self, session, cmd) -> HandleResult:
+        from io_assistant.files.command import resolve_register_target
+        from io_assistant.files.paths import AccessDenied
+
+        target = None
+        if cmd.path:
+            try:
+                target = self._gate.resolve(cmd.path)
+            except AccessDenied as e:
+                return HandleResult("file", None,
+                                    f"I can't read that: {e.reason}.",
+                                    intent_kind="error")
+        else:
+            res = resolve_register_target(cmd.phrase or "", session, self._gate,
+                                          self._config.files)
+            if res.kind == "one":
+                target = res.path
+            elif res.kind == "many":
+                names = ", ".join(p.name for p in res.candidates)
+                return HandleResult("file", None,
+                                    f"I found a few — which one? {names}",
+                                    intent_kind="unknown")
+            else:
+                return HandleResult(
+                    "file", None,
+                    "I couldn't find that folder under your indexed locations.",
+                    intent_kind="unknown")
+        try:
+            result = self._file_index.register(session, target, self._gate,
+                                               self._config.files)
+        except AccessDenied as e:
+            return HandleResult("file", None, f"I can't read that: {e.reason}.",
+                                intent_kind="error")
+        for node in self._file_index.stale(session):
+            self._indexer.index_path(session, Path(node.path), gate=self._gate)
+        return HandleResult(
+            "file", None,
+            f"Indexed {target.name} — {result.discovered} file(s).",
+            intent_kind="ack",
         )
 
     def _summarize(self, session, result: PersistResult) -> str:

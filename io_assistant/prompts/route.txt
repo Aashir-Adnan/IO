@@ -1,5 +1,5 @@
 Classify ONE user utterance into exactly one intent. Reply with ONE word,
-uppercase, nothing else: STORE, QUERY, or UNKNOWN.
+uppercase, nothing else: STORE, QUERY, FILE, or UNKNOWN.
 
 STORE — the user is recording something about their own life for you to
   remember: an event that happened, a task or reminder, a plan, a fact, a
@@ -10,6 +10,10 @@ QUERY — the user is asking you about things they have told you before: their
   events, tasks, people, places, habits, history. Includes "what do I…",
   "what's on my…", "when did I…", "do I have…", "show me…", "how many…",
   "what did I…", "anything I need to…".
+
+FILE — the user wants you to look in, or remember, files and folders on their
+  computer: "what does my lease say…", "find the invoice from…", "open the
+  notes about…", "remember my Taxes folder", "index ~/work/reports".
 
 UNKNOWN — anything else: greetings, small talk, general-knowledge questions
   ("what's the capital of France"), requests you can't fulfil from the user's
@@ -25,6 +29,11 @@ What's on my plate this week? -> QUERY
 When did I last see Ali? -> QUERY
 Do I have anything scheduled for Friday? -> QUERY
 How's my gym been going? -> QUERY
+What does my lease say about pets? -> FILE
+Find the Granjur invoice -> FILE
+Remember my Taxes folder in Documents -> FILE
+Index C:\Users\me\reports -> FILE
+Open the notes from the Hunza trip -> FILE
 Hello there -> UNKNOWN
 What's the weather like? -> UNKNOWN
 Tell me a joke -> UNKNOWN
