@@ -258,11 +258,15 @@ def test_confirm_replays_without_reextraction(db, config, fake_backend, monkeypa
     assert fake_backend.calls == calls_before  # no route, no extract
 
 
-@requires_db
-def test_doctor_cli_smoke():
+def test_doctor_cli_smoke(monkeypatch):
     from typer.testing import CliRunner
-    from io_assistant.cli import app
+    import io_assistant.cli as cli
+    import io_assistant.doctor as d
 
-    result = CliRunner().invoke(app, ["doctor"])
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(
+        d, "run_checks", lambda c: [d.Check("PostgreSQL", True, "ok")]
+    )
+    result = CliRunner().invoke(cli.app, ["doctor"])
     assert result.exit_code == 0
-    assert "not implemented" in result.stdout
+    assert "OK" in result.stdout and "PostgreSQL" in result.stdout
