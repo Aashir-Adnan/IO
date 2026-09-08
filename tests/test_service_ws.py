@@ -22,7 +22,7 @@ def test_ws_roundtrip(config, fake_backend, db, monkeypatch):
         with c.websocket_connect("/ws") as ws:
             ws.send_json({"text": "note: ws note"})
             reply = ws.receive_json()
-    assert reply["type"] == "answer" and reply["stored"] is True
+    assert reply["type"] == "answer" and reply["kind"] == "ack"
     assert db.query(m.Record).filter_by(title="ws note").count() == 1
 
 

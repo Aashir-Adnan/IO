@@ -27,7 +27,7 @@ def test_store_then_query_over_http(config, fake_backend, db, monkeypatch):
                                  confidence=0.9)]))
     with TestClient(app) as c:
         r1 = c.post("/utterance", json={"text": "dinner with Nafay at Arcadian"})
-        assert r1.json()["stored"] is True
+        assert r1.json()["kind"] == "ack"
 
         fake_backend.set_intent("query")
         fake_backend.set_plan({"subqueries": [{"target_type": "record",
@@ -36,5 +36,5 @@ def test_store_then_query_over_http(config, fake_backend, db, monkeypatch):
         fake_backend.set_answer("You had dinner with Nafay at Arcadian.")
         r2 = c.post("/utterance", json={"text": "when did I see Nafay?"})
     assert r2.json()["intent"] == "query"
-    assert "Nafay" in r2.json()["message"]
+    assert "Nafay" in r2.json()["text"]
     assert db.query(m.Record).filter_by(title="dinner with Nafay").count() == 1

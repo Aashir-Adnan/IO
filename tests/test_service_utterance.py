@@ -26,7 +26,7 @@ def test_post_utterance_stores(config, fake_backend, db, monkeypatch):
         r = c.post("/utterance", json={"text": "note: buy milk"})
     assert r.status_code == 200
     body = r.json()
-    assert body["intent"] == "store" and body["stored"] is True
+    assert body["intent"] == "store" and body["kind"] == "ack"
     assert db.query(m.Record).filter_by(title="buy milk").count() == 1
 
 
@@ -43,5 +43,5 @@ def test_post_utterance_gate_then_confirm(config, fake_backend, db, monkeypatch)
         tok = r1.json()["pending_token"]
         assert tok
         r2 = c.post("/utterance", json={"text": "yes", "confirm_token": tok})
-    assert r2.json()["stored"] is True
+    assert r2.json()["kind"] == "ack"
     assert db.query(m.Record).filter_by(title="vague thing").count() == 1

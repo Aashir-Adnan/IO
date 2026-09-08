@@ -4,51 +4,84 @@ import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from fastapi.staticfiles import StaticFiles
 
 from io_assistant.config import Config
+from io_assistant.conversation.context import format_context
+from io_assistant.conversation.store import ConversationStore
 from io_assistant.db.base import make_engine, make_session_factory
 from io_assistant.orchestrator import Orchestrator, PendingStore
-from io_assistant.service.schemas import HealthOut, UtteranceIn, UtteranceOut
+from io_assistant.service.schemas import (
+    ConversationOut,
+    ConversationSummary,
+    HealthOut,
+    NewConversationOut,
+    TurnResponse,
+    UtteranceIn,
+)
 
 __all__ = ["create_app"]
 
 
-def create_app(config: Config, *, orchestrator=None, engine=None) -> FastAPI:
+def create_app(
+    config: Config,
+    *,
+    orchestrator=None,
+    engine=None,
+    conversations: ConversationStore | None = None,
+) -> FastAPI:
     app = FastAPI(title="io", version="0.1.0")
 
     eng = engine if engine is not None else make_engine(config.database_url)
+    factory = make_session_factory(eng)
     if orchestrator is None:
-        factory = make_session_factory(eng)
         orchestrator = Orchestrator(config, session_factory=factory)
+    store = conversations or ConversationStore(factory)
 
     app.state.config = config
     app.state.engine = eng
     app.state.orchestrator = orchestrator
+    app.state.conversations = store
     app.state.pending: dict[str, PendingStore] = {}
+    app.state.recall_ms = 0
 
-    def _run(body: UtteranceIn) -> UtteranceOut:
+    def _run(body: UtteranceIn) -> TurnResponse:
         pending = None
         if body.confirm_token:
             pending = app.state.pending.pop(body.confirm_token, None)
+
+        conv_id = body.conversation_id or store.ensure_active()
+        text_in = pending.text if pending is not None else body.text
+        store.append(conv_id, "user", text_in, source=body.source)
+        history = format_context(store.recent_turns(conv_id))
+
         if pending is not None:
-            result = orchestrator.handle(pending.text, pending=pending)
+            result = orchestrator.handle(pending.text, pending=pending, history=history)
         else:
-            result = orchestrator.handle(body.text, source=body.source)
+            result = orchestrator.handle(
+                body.text, source=body.source, history=history
+            )
+
+        msg_id = store.append(
+            conv_id, "assistant", result.message,
+            kind=result.intent_kind, intent=result.intent, source=body.source,
+        )
 
         token = None
         if result.pending is not None:
             token = secrets.token_urlsafe(8)
             app.state.pending[token] = result.pending
-        stored = result.stored is not None and not getattr(
-            result.stored, "gated", False
-        )
-        return UtteranceOut(
+
+        return TurnResponse(
+            kind=result.intent_kind,
             intent=result.intent,
-            message=result.message,
+            text=result.message,
+            shape=result.shape,
+            cards=[c.model_dump(mode="json") for c in result.cards],
             pending_token=token,
-            stored=stored,
+            conversation_id=conv_id,
+            message_id=msg_id,
         )
 
     @app.get("/")
@@ -64,14 +97,30 @@ def create_app(config: Config, *, orchestrator=None, engine=None) -> FastAPI:
         except Exception:
             db_ok = False
         return HealthOut(
-            ok=db_ok,
-            database=db_ok,
-            backend_provider=config.backend.provider,
+            ok=db_ok, database=db_ok, backend_provider=config.backend.provider
         )
 
-    @app.post("/utterance", response_model=UtteranceOut)
+    @app.post("/utterance", response_model=TurnResponse)
     def utterance(body: UtteranceIn):
         return _run(body)
+
+    @app.get("/conversations", response_model=list[ConversationSummary])
+    def conversations_list():
+        return store.list_conversations()
+
+    @app.post("/conversation", response_model=NewConversationOut)
+    def conversation_new():
+        return NewConversationOut(conversation_id=store.create())
+
+    @app.get("/conversation", response_model=ConversationOut)
+    def conversation_get(id: int | None = None, before: int | None = None):
+        cid = id or store.active_id()
+        if cid is None:
+            cid = store.create()
+        return ConversationOut(
+            conversation_id=cid,
+            messages=store.history(cid, before_id=before),
+        )
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
@@ -84,8 +133,8 @@ def create_app(config: Config, *, orchestrator=None, engine=None) -> FastAPI:
                 except Exception as e:
                     await sock.send_json({"type": "error", "message": str(e)})
                     continue
-                out = _run(body)
-                await sock.send_json({"type": "answer", **out.model_dump()})
+                turn = _run(body)
+                await sock.send_json({"type": "answer", **turn.model_dump()})
         except WebSocketDisconnect:
             return
 
