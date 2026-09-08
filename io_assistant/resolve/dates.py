@@ -57,7 +57,21 @@ def _normalize(phrase: str) -> str:
     text = re.sub(r"\s+", " ", text)
     if text.startswith("on "):
         text = text[3:].strip()
+    if text.startswith("for "):
+        text = text[4:].strip()
     return text
+
+
+_UNITS = {
+    "day": "days",
+    "days": "days",
+    "week": "weeks",
+    "weeks": "weeks",
+    "month": "months",
+    "months": "months",
+    "year": "years",
+    "years": "years",
+}
 
 
 def _at_time(base: datetime, hour: int, minute: int = 0) -> datetime:
@@ -105,13 +119,32 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
         return DateResult(now - timedelta(days=7), True)
     if text == "next week":
         return DateResult(now + timedelta(days=7), True)
+    if text == "last month":
+        return DateResult(now - relativedelta(months=1), True)
+    if text == "next month":
+        return DateResult(now + relativedelta(months=1), True)
+    if text == "last year":
+        return DateResult(now - relativedelta(years=1), True)
+    if text == "next year":
+        return DateResult(now + relativedelta(years=1), True)
 
-    m = re.fullmatch(r"(?:in )?(\d+) days?(?: from now)?", text)
-    if m:
-        return DateResult(now + relativedelta(days=int(m.group(1))), True)
-    m = re.fullmatch(r"(\d+) days? ago", text)
-    if m:
-        return DateResult(now - relativedelta(days=int(m.group(1))), True)
+    # "2 years now" / "for 2 years now" — an ongoing state that began N units ago
+    m = re.fullmatch(r"(\d+|a|an) ([a-z]+?)s? now", text)
+    if m and m.group(2) in _UNITS:
+        qty = 1 if m.group(1) in ("a", "an") else int(m.group(1))
+        return DateResult(now - relativedelta(**{_UNITS[m.group(2)]: qty}), True)
+
+    m = re.fullmatch(r"(?:in )?(\d+|a|an) ([a-z]+?)s? ago", text)
+    if not m:
+        m = re.fullmatch(r"(?:in )?(\d+|a|an) ([a-z]+?)s?(?: from now)?", text)
+        sign = 1
+    else:
+        sign = -1
+    if m and m.group(2) in _UNITS:
+        qty_raw = m.group(1)
+        qty = 1 if qty_raw in ("a", "an") else int(qty_raw)
+        unit = _UNITS[m.group(2)]
+        return DateResult(now + relativedelta(**{unit: sign * qty}), True)
 
     m = re.fullmatch(r"(last|this|next) ([a-z]+)", text)
     if m:

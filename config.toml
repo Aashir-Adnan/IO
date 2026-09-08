@@ -2,7 +2,7 @@ database_url = "postgresql+psycopg://io:io@localhost:5432/io"
 embedding_dim = 768
 
 [backend]
-provider = "local"          # "local" | "anthropic" | "hybrid"
+provider = "anthropic"      # "local" | "anthropic" | "hybrid"
 profile = "light"           # "light" | "quality"
 anthropic_model = "claude-haiku-4-5"
 ollama_url = "http://localhost:11434"

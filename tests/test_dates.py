@@ -62,6 +62,46 @@ def test_3_days_ago():
     assert r.ok and r.value.date() == dt.date(2026, 9, 4)
 
 
+def test_2_years_ago():
+    r = ground("2 years ago", NOW)
+    assert r.ok and r.value.date() == dt.date(2024, 9, 7)
+
+
+def test_for_2_years_now():
+    r = ground("for 2 years now", NOW)
+    assert r.ok and r.value.date() == dt.date(2024, 9, 7)
+
+
+def test_3_weeks_ago():
+    r = ground("3 weeks ago", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 8, 17)
+
+
+def test_6_months_ago():
+    r = ground("6 months ago", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 3, 7)
+
+
+def test_in_2_weeks():
+    r = ground("in 2 weeks", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 21)
+
+
+def test_a_year_ago():
+    r = ground("a year ago", NOW)
+    assert r.ok and r.value.date() == dt.date(2025, 9, 7)
+
+
+def test_last_month():
+    r = ground("last month", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 8, 7)
+
+
+def test_last_year():
+    r = ground("last year", NOW)
+    assert r.ok and r.value.date() == dt.date(2025, 9, 7)
+
+
 def test_last_week():
     r = ground("last week", NOW)
     assert r.ok and r.value.date() == dt.date(2026, 8, 31)
