@@ -1,7 +1,38 @@
 # Query pipeline (hybrid structured + RAG)
 
-**Implemented in Plan 2** — not built in Plan 1. This is a reference summary so a
-Plan 1 session understands where its data will be read from.
+**Implemented (Plan 2, 2026-09-08).** Runs when Route returns `QUERY`.
+
+Modules in `io_assistant/query/`:
+- `plan.py` — `SubQuery`/`QueryPlan` pydantic + `ground_plan(raw, now)`:
+  clamps time windows (via `resolve.dates.ground`), normalizes kind/domain
+  vocab, drops unknown domains, coerces bad enums, synthesizes one bare
+  subquery when the model returns none.
+- `planner.py` — `Planner.run()`: `backend.plan` → `ground_plan`, retry once,
+  fall back to a single `semantic_hint=question` subquery.
+- `entities.py` — `resolve_query_entities()`: unresolved names → `{etype: [ids]}`
+  via `EntityResolver.lookup()` (read-only, no create/gate) + occasion name match.
+- `compile.py` — `compile_structured(sq, entity_ids, now)` → SQLAlchemy `Select`
+  over the target table; `EXISTS` subqueries for entity links; window on
+  `coalesce(occurred_at, due_at, created_at)`; `LIMIT 200`.
+- `retrieve.py` — `retrieve_subquery()`: structured spine ∪ pgvector KNN
+  (`LIMIT 50`, same target + window), provenance `structured`/`semantic`/`both`.
+- `rank.py` — `rank(groups, now, top_n=20)`: `score = 0.30*recency +
+  0.30*similarity + 0.30*structured_relevance + 0.15*(provenance=="both")`.
+  `recency = exp(-age_days/30)`, `similarity = 1-distance`,
+  `structured_relevance = 1.0` unless semantic-only (`0.4`).
+- `recur.py` — `expand_recurrences()`: `dateutil.rrule` firings in the window
+  (cap 50); unparseable rules pass through.
+- `respond.py` — `Responder.run()`: empty rows → deterministic
+  "I don't have anything on that yet." (no model call); else
+  `backend.phrase(question, rows_to_json(rows), shape)`.
+- `pipeline.py` — `QueryPipeline.answer(session, question, now)` wires it all;
+  `Orchestrator` builds one and the `intent == "query"` branch calls it (logging
+  the utterance with `resolved_intent="query"`).
+
+Deferred: `aggregation` (`count`/`latest`) is parsed onto `SubQuery` but not yet
+special-cased in `compile.py`.
+
+--- (original spec summary follows) ---
 
 Runs when Route returns `QUERY`.
 

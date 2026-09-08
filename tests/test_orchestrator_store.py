@@ -67,13 +67,21 @@ def test_unknown_intent_message(db, config, fake_backend):
 
 
 @requires_db
-def test_query_intent_message(db, config, fake_backend):
+def test_query_intent_answers(db, config, fake_backend, monkeypatch):
+    import io_assistant.orchestrator as orch
+
+    monkeypatch.setattr(orch, "Embedder", lambda cfg: type("E", (), {
+        "embed_one": lambda self, t: [0.0] * 768,
+        "embed": lambda self, ts: [[0.0] * 768 for _ in ts]})())
     fake_backend.set_intent("query")
+    fake_backend.set_plan({"subqueries": [], "answer_shape": "text"})
     o = Orchestrator(config, session_factory=lambda: db, backend=fake_backend)
     res = o.handle("what did I do yesterday?")
     assert res.intent == "query"
     assert res.stored is None
-    assert "Plan 2" in res.message
+    # nothing stored yet -> deterministic empty answer, model not called
+    assert "anything" in res.message.lower()
+    assert db.query(m.Utterance).filter_by(resolved_intent="query").count() == 1
 
 
 @requires_db

@@ -10,6 +10,7 @@ from io_assistant.db import models as m
 from io_assistant.extract.extractor import Extractor
 from io_assistant.models_domain import ExtractionResult, Intent
 from io_assistant.persist.writer import PersistError, PersistResult, persist_store
+from io_assistant.query.pipeline import QueryPipeline
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.route.router import Router
 
@@ -44,6 +45,7 @@ class Orchestrator:
         self._embedder = Embedder(config)
         self._router = Router(self._backend)
         self._extractor = Extractor(self._backend)
+        self._query = QueryPipeline(self._backend, self._embedder, config.resolver)
 
     def handle(
         self,
@@ -111,11 +113,17 @@ class Orchestrator:
             )
 
         if intent == "query":
-            return HandleResult(
-                "query",
-                None,
-                "Query answering isn't available yet (comes in Plan 2).",
+            session.add(
+                m.Utterance(
+                    text=text,
+                    source=source,
+                    captured_at=captured_at,
+                    resolved_intent="query",
+                )
             )
+            session.flush()
+            answer = self._query.answer(session, text, now)
+            return HandleResult("query", None, answer.text)
 
         # intent == "store"
         extraction = self._extractor.run(text, now)

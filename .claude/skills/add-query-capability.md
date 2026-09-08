@@ -1,13 +1,28 @@
 # Skill: add a query capability
 
-**Plan 2** — the query pipeline is not built in Plan 1. This file is a
-placeholder to be filled in when Plan 2 starts.
+The query pipeline lives in `io_assistant/query/` (see
+`.claude/knowledge/query-pipeline.md` for the module map). To support a new
+question shape:
 
-Rough shape (from spec §5): support a new question shape by (1) adding planner
-few-shots so the model emits the right `QueryPlan` subquery
-(`kind_filter` / `domain_filter` / `time_window` / `status_filter` /
-`semantic_hint` / `aggregation`), (2) extending the SQL compiler in `query/` if
-the subquery needs a filter it does not yet emit, (3) adding planner fixtures
-(question → expected `QueryPlan`) and SQL-compilation fixtures (subquery →
-parameterized SQL + params, executed against the seeded test DB). Time windows
-and `kind`/`domain` vocabulary are always grounded / clamped by app code.
+1. **Planner** — if the model needs to emit a filter it doesn't yet, add it to
+   `SubQuery` in `query/plan.py`, document it in `io_assistant/prompts/plan.txt`,
+   and ground/clamp it in `ground_plan()` (never trust the raw value —
+   time windows go through `resolve.dates.ground`, vocab through
+   `normalize_kind`/`normalize_domain`).
+2. **SQL compiler** — add the `WHERE`/join in `compile_structured()`
+   (`query/compile.py`). Keep it parameterized; keep the `LIMIT 200` cap.
+3. **Retrieval** — only if the capability introduces a new `target_type` /
+   table: extend `_TARGET_MODEL`, `recency_column`, and the link map.
+4. **Ranking** — if a new target type needs a different recency column, extend
+   `_recency_value` / `recency_column`.
+5. **Fixtures + tests** — add a case to `tests/fixtures/questions_plan.json`
+   (raw model output → expected grounded `QueryPlan`), a `test_query_compile.py`
+   case (subquery + seeded rows → expected rows), and extend
+   `tests/test_e2e_query.py` if it's a user-visible scenario.
+6. **Never** let a model-produced value reach SQL unclamped — that is the
+   `.claude/rules/llm-boundaries.md` line.
+
+Deferred capability: `aggregation` (`count` / `latest`) is carried on `SubQuery`
+but not yet pushed into SQL — a `count` question currently returns the row list
+and the Responder counts. Implementing it means a `func.count()` / `LIMIT 1
+ORDER BY recency` branch in `compile_structured()`.
