@@ -87,3 +87,15 @@ def test_extract_bad_json_raises(config):
     with pytest.raises(BackendParseError):
         AnthropicBackend(config, client=FakeClient("sorry, no")).extract(
             "x", dt.datetime.now(dt.timezone.utc))
+
+
+def test_anthropic_plan_parses(config):
+    c = FakeClient('{"subqueries":[{"target_type":"record"}],"answer_shape":"text"}')
+    out = AnthropicBackend(config, client=c).plan("q", dt.datetime.now(dt.timezone.utc))
+    assert out["subqueries"][0]["target_type"] == "record"
+
+
+def test_anthropic_phrase_returns_text(config):
+    c = FakeClient("Two tasks are open.")
+    out = AnthropicBackend(config, client=c).phrase("work?", [{"title": "x"}], "markdown")
+    assert out == "Two tasks are open."

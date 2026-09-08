@@ -58,3 +58,21 @@ def test_chat_wraps_malformed_body(config, monkeypatch):
 
     with pytest.raises(LocalBackendError):
         LocalBackend(config).route("hello")
+
+
+def test_local_plan_parses_json(config, monkeypatch):
+    _patch_chat(monkeypatch, '{"subqueries": [], "answer_shape": "text"}')
+    out = LocalBackend(config).plan("what did I do", dt.datetime.now(dt.timezone.utc))
+    assert out == {"subqueries": [], "answer_shape": "text"}
+
+
+def test_local_plan_bad_json_raises(config, monkeypatch):
+    _patch_chat(monkeypatch, "not json")
+    with pytest.raises(BackendParseError):
+        LocalBackend(config).plan("x", dt.datetime.now(dt.timezone.utc))
+
+
+def test_local_phrase_returns_text(config, monkeypatch):
+    _patch_chat(monkeypatch, "You did leg day yesterday.")
+    out = LocalBackend(config).phrase("gym?", [{"title": "leg day"}], "text")
+    assert out == "You did leg day yesterday."

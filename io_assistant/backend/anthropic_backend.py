@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from importlib import resources
 
@@ -102,7 +103,34 @@ class AnthropicBackend:
             raise BackendParseError(str(e)) from e
 
     def plan(self, question: str, now: datetime) -> dict:
-        raise NotImplementedError("Plan 2")
+        out = self._complete(
+            "You convert a question into a retrieval plan. Output one JSON "
+            "object and nothing else.",
+            _prompt("plan.txt").format(now=now.isoformat(), question=question),
+            max_tokens=512,
+        )
+        out = (
+            out.strip()
+            .removeprefix("```json")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise BackendParseError(str(e)) from e
+        if not isinstance(data, dict):
+            raise BackendParseError(f"plan is not an object: {out!r}")
+        return data
 
     def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
-        raise NotImplementedError("Plan 2")
+        return self._complete(
+            "You answer strictly from the provided rows.",
+            _prompt("respond.txt").format(
+                question=question,
+                rows=json.dumps(rows, default=str),
+                shape=shape,
+            ),
+            max_tokens=800,
+        )

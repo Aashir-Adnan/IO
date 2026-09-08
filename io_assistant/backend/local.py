@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from importlib import resources
@@ -94,7 +95,29 @@ class LocalBackend:
             raise BackendParseError(str(e)) from e
 
     def plan(self, question: str, now: datetime) -> dict:
-        raise NotImplementedError("Plan 2")
+        out = self._chat(
+            "You convert a question into a retrieval plan. Output one JSON "
+            "object and nothing else.",
+            _load_prompt("plan.txt").format(
+                now=now.isoformat(), question=question
+            ),
+            json_mode=True,
+        )
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise BackendParseError(str(e)) from e
+        if not isinstance(data, dict):
+            raise BackendParseError(f"plan is not an object: {out!r}")
+        return data
 
     def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
-        raise NotImplementedError("Plan 2")
+        return self._chat(
+            "You answer strictly from the provided rows.",
+            _load_prompt("respond.txt").format(
+                question=question,
+                rows=json.dumps(rows, default=str),
+                shape=shape,
+            ),
+            json_mode=False,
+        )

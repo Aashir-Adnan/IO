@@ -91,6 +91,7 @@ class FakeBackend:
     def __init__(self):
         self._intent: Intent = "unknown"
         self._extraction = ExtractionResult()
+        self._plan: dict = {}
         self._answer = ""
         self.calls: list[str] = []
 
@@ -103,6 +104,9 @@ class FakeBackend:
     def set_answer(self, s: str):
         self._answer = s
 
+    def set_plan(self, d: dict):
+        self._plan = d
+
     def route(self, utterance: str) -> Intent:
         self.calls.append("route")
         return self._intent
@@ -113,7 +117,7 @@ class FakeBackend:
 
     def plan(self, question: str, now: datetime) -> dict:
         self.calls.append("plan")
-        return {}
+        return self._plan
 
     def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
         self.calls.append("phrase")

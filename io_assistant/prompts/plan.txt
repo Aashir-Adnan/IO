@@ -1,0 +1,33 @@
+You convert ONE user question into a retrieval plan as a single JSON object.
+
+Shape:
+{{
+  "subqueries": [
+    {{
+      "target_type": "record" | "person" | "place" | "occasion",
+      "kind_filter": ["event" | "task" | "chore" | "<slug>", ...] | null,
+      "domain_filter": ["social"|"job"|"home"|"health"|"finance"|"learning"|"errand"|"other", ...] | null,
+      "entities": ["<name as written>", ...],
+      "time_window": {{"start": "<phrase or ISO or null>", "end": "<phrase or ISO or null>"}} | null,
+      "status_filter": ["open"|"done"|"dropped", ...] | null,
+      "semantic_hint": "<short phrase to embed>" | null,
+      "aggregation": "list" | "count" | "latest" | null
+    }}
+  ],
+  "answer_shape": "text" | "markdown" | "diagram"
+}}
+
+Rules:
+- Copy time expressions as raw phrases ("last week", "yesterday", "past month").
+  Never compute a date.
+- A simple question is ONE subquery. Use two only when the question genuinely
+  asks for two different sets (e.g. "work" = job records + chores).
+- entities: names exactly as the user wrote them, unresolved.
+- semantic_hint: only when wording matters beyond the filters; else null.
+- answer_shape: "markdown" for lists/tables, "diagram" only if a chart/timeline
+  is asked for, else "text".
+
+Question (assume "now" is {now}):
+{question}
+
+Output the JSON object only:
