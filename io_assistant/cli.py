@@ -88,13 +88,14 @@ def run() -> None:
     except Exception:
         already = False
 
+    fs = config.ui.fullscreen
     if already:
-        open_window(url)
+        open_window(url, fullscreen=fs)
         return
 
     server, _thread = run_service(config, block=False)
     try:
-        open_window(url)
+        open_window(url, fullscreen=fs)
     finally:
         server.should_exit = True
 

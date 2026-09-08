@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
+from pathlib import Path
 
 import httpx
 import uvicorn
@@ -41,7 +44,30 @@ def run_service(config: Config, *, block: bool = True):
     return server, thread
 
 
-def open_window(url: str, title: str = "io") -> None:
+def _geometry_path() -> Path:
+    return Path(os.path.expanduser("~/.local/share/io")) / "window.json"
+
+
+def _load_geometry() -> dict:
+    try:
+        return json.loads(_geometry_path().read_text())
+    except Exception:
+        return {}
+
+
+def _save_geometry(window) -> None:
+    try:
+        p = _geometry_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "width": int(window.width), "height": int(window.height),
+            "x": int(window.x), "y": int(window.y),
+        }))
+    except Exception:
+        pass
+
+
+def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None:
     try:
         import webview
     except Exception as e:  # pragma: no cover - platform dependent
@@ -49,5 +75,40 @@ def open_window(url: str, title: str = "io") -> None:
             "pywebview is not available. Run `io serve` and open "
             f"{url} in a browser instead."
         ) from e
-    webview.create_window(title, url, width=980, height=720)
-    webview.start()
+
+    geo = _load_geometry()
+    window = webview.create_window(
+        title, url,
+        width=geo.get("width", 1180), height=geo.get("height", 760),
+        x=geo.get("x"), y=geo.get("y"),
+        min_size=(960, 640),
+        fullscreen=fullscreen and not geo,
+        text_select=True,
+    )
+
+    def _menu():  # pragma: no cover - GUI
+        try:
+            from webview.menu import Menu, MenuAction
+
+            def _new_conv():
+                try:
+                    httpx.post(url.replace("/app/", "/conversation"), timeout=3)
+                except Exception:
+                    pass
+                window.load_url(url)
+
+            return [
+                Menu("File", [MenuAction("New Conversation", _new_conv)]),
+                Menu("View", [
+                    MenuAction("Reload", lambda: window.load_url(url)),
+                    MenuAction("Toggle Fullscreen", window.toggle_fullscreen),
+                ]),
+            ]
+        except Exception:
+            return []
+
+    window.events.closing += lambda: _save_geometry(window)
+    try:
+        webview.start(menu=_menu())
+    except TypeError:  # older pywebview without menu kwarg
+        webview.start()

@@ -4,6 +4,7 @@ import { icon } from "./vendor/icons.js";
 import { mount as mountStandby } from "./views/standby.js";
 import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
+import { Drawer } from "./components/drawer.js";
 
 const VIEWS = {
   standby: mountStandby,
@@ -69,10 +70,13 @@ function route() {
   mount(view, ctx);
 }
 
+let drawer;
 document.getElementById("rail").addEventListener("click", (e) => {
   const b = e.target.closest("[data-nav]");
   if (!b) return;
   const nav = b.dataset.nav;
+  if (nav === "conversation") { drawer.toggle(); return; }
+  drawer.close();
   if (VIEWS[nav]) store.set({ view: nav });
   else store.set({ view: "conversation" });   // stub destinations land on the transcript
 });
@@ -88,6 +92,7 @@ store.subscribe((s) => {
 
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ctx = ctx;   // for the DOM smoke test
+  drawer = Drawer(document.getElementById("drawer"), ctx);
   ws = api.connectWs((frame) => {
     if (frame.type === "_open") store.set({ connection: "connected" });
     else if (frame.type === "_close") store.set({ connection: "disconnected" });

@@ -279,3 +279,35 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .listening-hint b { color: var(--color-neutral-400); }
 .listening-err { color: var(--color-neutral-500); }
 .mic-live { color: var(--color-accent-400); }
+
+/* ---- conversations drawer ---- */
+.drawer {
+  width: 240px; flex: none;
+  border-right: 1px solid var(--color-hair);
+  background: var(--color-bg);
+  padding: 16px 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.drawer-new {
+  margin: 0 14px 14px; padding: 9px 12px;
+  border: 1px solid var(--color-accent-700); border-radius: var(--radius-md);
+  color: var(--color-accent-300); font: 500 12px/1 var(--font-heading);
+  background: var(--color-accent-900); text-align: left;
+}
+.drawer-group {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--color-neutral-700);
+  padding: 14px 18px 6px;
+}
+.drawer-item {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 18px; font-size: 13px; color: var(--color-neutral-500);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-left: 2px solid transparent;
+}
+.drawer-item:hover { color: var(--color-neutral-300); }
+.drawer-item.on {
+  color: var(--color-text); border-left-color: var(--color-accent-500);
+  background: linear-gradient(90deg, var(--color-accent-900), transparent 80%);
+}
