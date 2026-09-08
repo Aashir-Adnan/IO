@@ -11,8 +11,12 @@ Three live-run quality fixes landed 2026-09-08:
 
 Full suite 174 pass / 5 opt-in skipped (all on `main`).
 
+One command for the whole stack: **`.\dev.ps1 up`** / **`.\dev.ps1 down`**
+(also `status` / `logs` / `app` / `listen` / `doctor` / `test [args]`).
+Runtime state in `.io-dev/` (gitignored).
+
 To run voice: `uv run python -m piper.download_voices en_US-amy-medium
---data-dir ~/.local/share/io/piper`, then `io serve` + `io listen`.
+--data-dir ~/.local/share/io/piper`, then `.\dev.ps1 up` + `.\dev.ps1 listen`.
 `io doctor` is green except Piper (voice model not downloaded).
 
 Remaining work: backlog follow-ups only. Tests need `IO_TEST_DATABASE_URL`
