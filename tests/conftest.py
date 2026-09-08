@@ -132,3 +132,45 @@ class FakeBackend:
 @pytest.fixture
 def fake_backend():
     return FakeBackend()
+
+
+class FakeSpeaker:
+    def __init__(self):
+        self.said: list[str] = []
+        self.synth_calls: list[str] = []
+
+    def say(self, text: str) -> None:
+        self.said.append(text)
+
+    def synthesize(self, text: str) -> bytes:
+        self.synth_calls.append(text)
+        return b"RIFF\x00\x00\x00\x00WAVEfmt "
+
+
+@pytest.fixture
+def fake_speaker():
+    return FakeSpeaker()
+
+
+class FakeTranscriber:
+    def __init__(self):
+        self._text = ""
+        self._conf = None
+        self.calls: list[str] = []
+
+    def set_text(self, s):
+        self._text = s
+
+    def set_confidence(self, c):
+        self._conf = c
+
+    def transcribe(self, wav_path: str):
+        from io_assistant.transcribe.interface import Transcript
+
+        self.calls.append(wav_path)
+        return Transcript(text=self._text, confidence=self._conf)
+
+
+@pytest.fixture
+def fake_transcriber():
+    return FakeTranscriber()
