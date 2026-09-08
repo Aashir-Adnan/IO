@@ -137,3 +137,28 @@ def test_service_section_defaults(tmp_path):
     cfg = load_config(p)
     assert cfg.service.host == "127.0.0.1"
     assert cfg.service.port == 8765
+
+def test_voice_and_capture_defaults(tmp_path):
+    p = write_toml(tmp_path, """
+        database_url = "postgresql+psycopg://u:p@localhost/db"
+        embedding_dim = 768
+        [backend]
+        provider = "local"
+        profile = "light"
+        anthropic_model = "claude-haiku-4-5"
+        ollama_url = "http://localhost:11434"
+        ollama_keep_alive = "30s"
+        instruct_model = "llama3.2:3b"
+        embed_model = "nomic-embed-text"
+        num_thread = 0
+        [resolver]
+        fuzzy_threshold = 92
+        vector_similarity_threshold = 0.85
+        confidence_gate_threshold = 0.6
+    """)
+    cfg = load_config(p)
+    assert cfg.voice.tts_voice == "en_US-amy-medium"
+    assert cfg.capture.passive is False
+    from io_assistant.config import whisper_model_for
+    assert whisper_model_for("light") == "base"
+    assert whisper_model_for("quality") == "small"

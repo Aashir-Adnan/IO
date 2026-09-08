@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import tomllib
+from os.path import expanduser
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ValidationError
@@ -33,12 +34,35 @@ class ServiceConfig(BaseModel):
     port: int = 8765
     frontend_dir: str | None = None
 
+class VoiceConfig(BaseModel):
+    tts_voice: str = "en_US-amy-medium"
+    voices_dir: str = "~/.local/share/io/piper"
+    speak_in_app: bool = False
+    piper_bin: str | None = None
+
+    @property
+    def resolved_voice_path(self) -> Path:
+        return Path(expanduser(self.voices_dir)) / f"{self.tts_voice}.onnx"
+
+class CaptureConfig(BaseModel):
+    hotkey: str = "<ctrl>+<alt>+space"
+    passive: bool = False
+    sample_rate: int = 16000
+    vad_aggressiveness: int = 2
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
     backend: BackendConfig
     resolver: ResolverConfig
     service: ServiceConfig = ServiceConfig()
+    voice: VoiceConfig = VoiceConfig()
+    capture: CaptureConfig = CaptureConfig()
+
+_WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
+
+def whisper_model_for(profile: str) -> str:
+    return _WHISPER_BY_PROFILE.get(profile, "base")
 
 def _repo_root_config() -> Path:
     return Path(__file__).resolve().parent.parent / "config.toml"

@@ -15,6 +15,15 @@ num_thread = 0              # 0 = auto (physical cores - 2)
 host = "127.0.0.1"
 port = 8765
 
+[voice]
+tts_voice = "en_US-amy-medium"
+voices_dir = "~/.local/share/io/piper"
+speak_in_app = false
+
+[capture]
+hotkey = "<ctrl>+<alt>+space"
+passive = false
+
 [resolver]
 fuzzy_threshold = 92
 vector_similarity_threshold = 0.85

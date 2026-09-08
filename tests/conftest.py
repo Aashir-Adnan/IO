@@ -6,7 +6,9 @@ import pytest
 
 from io_assistant.models_domain import AnswerShape, ExtractionResult, Intent
 
-from io_assistant.config import Config, BackendConfig, ResolverConfig, ServiceConfig
+from io_assistant.config import (
+    Config, BackendConfig, ResolverConfig, ServiceConfig, VoiceConfig, CaptureConfig,
+)
 from io_assistant.db.base import make_engine, make_session_factory, Base
 from io_assistant.db import models  # noqa: F401 — register mappers
 from sqlalchemy import text
@@ -29,6 +31,8 @@ def config() -> Config:
             confidence_gate_threshold=0.6,
         ),
         service=ServiceConfig(),
+        voice=VoiceConfig(),
+        capture=CaptureConfig(),
     )
 
 
