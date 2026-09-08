@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from rapidfuzz import fuzz
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from io_assistant.config import ResolverConfig
 from io_assistant.db import models as m
@@ -37,28 +37,71 @@ class EntityResolver:
         model, name_attr = _TABLES[entity_type]
         return model, getattr(model, name_attr)
 
+    def _candidate_rows(
+        self, entity_type: EntityType, name: str, aliases: list[str]
+    ) -> list[tuple]:
+        """Narrow to a bounded candidate set in SQL: an exact/overlap match on
+        name or aliases[], UNION a trigram-similarity match on the name column
+        (backed by ix_*_name_trgm). Never a full-table scan."""
+        model, name_col = self._model_col(entity_type)
+        needles = [name, *aliases]
+        lowered = [n.lower() for n in needles]
+
+        alias_text = func.array_to_string(model.aliases, " ")
+        exact = select(model.id, name_col, model.aliases).where(
+            or_(
+                func.lower(name_col).in_(lowered),
+                model.aliases.op("&&")(needles),  # array overlap (exact case)
+            )
+        )
+        # pg_trgm similarity() is case-insensitive; the name-column comparison
+        # uses ix_*_name_trgm, the alias one is a cheap expression filter.
+        trgm = (
+            select(model.id, name_col, model.aliases)
+            .where(
+                or_(
+                    func.similarity(name_col, name) > 0.3,
+                    func.similarity(alias_text, name) > 0.3,
+                )
+            )
+            .order_by(
+                func.greatest(
+                    func.similarity(name_col, name),
+                    func.similarity(alias_text, name),
+                ).desc()
+            )
+            .limit(50)
+        )
+        rows: dict[int, tuple] = {}
+        for cid, cname, caliases in self.session.execute(exact).all():
+            rows[cid] = (cid, cname, caliases)
+        for cid, cname, caliases in self.session.execute(trgm).all():
+            rows.setdefault(cid, (cid, cname, caliases))
+        return list(rows.values())
+
     def resolve(
         self, entity_type: EntityType, name: str, aliases: list[str]
     ) -> ResolveOutcome:
         model, name_col = self._model_col(entity_type)
         lowered = name.lower()
+        incoming = {a.lower() for a in aliases}
 
-        rows = self.session.execute(
-            select(model.id, name_col, model.aliases)
-        ).all()
+        rows = self._candidate_rows(entity_type, name, aliases)
 
-        # 1. exact: case-insensitive on name column OR any element of aliases[]
+        # 1. exact: incoming name/alias vs stored name/alias, case-insensitive
         for cid, cname, caliases in rows:
-            if cname.lower() == lowered or lowered in [
-                a.lower() for a in (caliases or [])
-            ]:
+            stored = {cname.lower(), *[a.lower() for a in (caliases or [])]}
+            if lowered in stored or cname.lower() in incoming or (stored & incoming):
                 return ResolveOutcome(cid, False, False, None, None)
 
-        # 2. fuzzy: token_set_ratio >= threshold, pick highest
+        # 2. fuzzy: best token_set_ratio over the name AND every stored alias
         best_id: int | None = None
         best_score = -1.0
-        for cid, cname, _caliases in rows:
-            score = fuzz.token_set_ratio(name, cname)
+        for cid, cname, caliases in rows:
+            score = max(
+                fuzz.token_set_ratio(name, c)
+                for c in (cname, *(caliases or []))
+            )
             if score > best_score:
                 best_score = score
                 best_id = cid
