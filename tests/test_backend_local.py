@@ -40,3 +40,21 @@ def test_chat_sets_num_thread_and_keep_alive(config, monkeypatch):
     LocalBackend(config).route("what did I do today")
     assert "num_thread" in fc.last["options"]
     assert fc.last["keep_alive"] == "30s"
+
+
+def test_chat_wraps_malformed_body(config, monkeypatch):
+    from io_assistant.backend.local import LocalBackendError
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"error": "model 'x' not found"}
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def post(self, *a, **k): return FakeResp()
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+
+    with pytest.raises(LocalBackendError):
+        LocalBackend(config).route("hello")

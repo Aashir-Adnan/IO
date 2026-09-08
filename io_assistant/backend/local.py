@@ -56,9 +56,15 @@ class LocalBackend:
             with httpx.Client(timeout=120) as client:
                 resp = client.post(self._url, json=body)
                 resp.raise_for_status()
-                return resp.json()["message"]["content"]
+                data = resp.json()
         except httpx.HTTPError as e:
             raise LocalBackendError(f"ollama chat failed: {e}") from e
+        try:
+            return data["message"]["content"]
+        except (KeyError, TypeError) as e:
+            raise LocalBackendError(
+                f"ollama chat returned an unexpected body: {data!r}"
+            ) from e
 
     def route(self, utterance: str) -> Intent:
         out = self._chat(
