@@ -74,12 +74,25 @@ def serve() -> None:
 
 @app.command()
 def run() -> None:
-    """Start the service and open the desktop window."""
+    """Open the desktop window, starting the service only if one isn't up."""
+    import httpx
+
     from io_assistant.service.runner import open_window, run_service
 
     config = load_config()
+    base = f"http://{config.service.host}:{config.service.port}"
+    url = f"{base}/app/"
+
+    try:
+        already = bool(httpx.get(f"{base}/health", timeout=1).json().get("ok"))
+    except Exception:
+        already = False
+
+    if already:
+        open_window(url)
+        return
+
     server, _thread = run_service(config, block=False)
-    url = f"http://{config.service.host}:{config.service.port}/app/"
     try:
         open_window(url)
     finally:

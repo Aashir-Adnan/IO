@@ -12,6 +12,8 @@
     .\dev.ps1 listen      voice mode (service must be up)
     .\dev.ps1 doctor      io doctor
     .\dev.ps1 test [...]  run the test suite against io_test
+    .\dev.ps1 install     put an "IO" shortcut on the Desktop (double-click =
+                          whole stack up + window; close window = stack down)
 #>
 param(
   [Parameter(Position = 0)][string]$Command = "help",
@@ -108,8 +110,11 @@ function Do-Up {
   Ensure-Ollama
 
   Info "alembic upgrade head"
-  uv run alembic upgrade head
-  if ($LASTEXITCODE -ne 0) { throw "migration failed" }
+  $mig = & uv run alembic upgrade head 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    $mig | ForEach-Object { Write-Host $_ }
+    throw "migration failed"
+  }
   Ok "schema at head"
 
   if (Test-Listen $Port) {
@@ -137,7 +142,10 @@ function Do-Up {
   Write-Host ""
   Ok "IO is up.  UI: http://localhost:$Port/app/"
   if ($Window) {
+    Info "opening desktop window - close it to shut the whole stack down"
     uv run io run
+    Write-Host ""
+    Do-Down
   } else {
     Write-Host "     .\dev.ps1 app      open the desktop window"
     Write-Host "     .\dev.ps1 listen   voice mode"
@@ -175,6 +183,24 @@ function Do-Status {
   docker compose ps
 }
 
+function Do-Install {
+  $desktop = [Environment]::GetFolderPath("Desktop")
+  $lnk = Join-Path $desktop "IO.lnk"
+  $ps = (Get-Command powershell).Source
+  $w = New-Object -ComObject WScript.Shell
+  $s = $w.CreateShortcut($lnk)
+  $s.TargetPath = $ps
+  $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\dev.ps1`" up -Window"
+  $s.WorkingDirectory = $Root
+  $s.WindowStyle = 7           # minimized
+  $s.IconLocation = "$ps,0"
+  $s.Description = "Start IO (Postgres + service + desktop window); close the window to stop."
+  $s.Save()
+  Ok "shortcut created: $lnk"
+  Write-Host "     Double-click it: the stack comes up and the window opens."
+  Write-Host "     Close the window: everything shuts down."
+}
+
 function Show-Help {
   Write-Host "dev.ps1 - IO stack on/off switch"
   Write-Host ""
@@ -187,6 +213,7 @@ function Show-Help {
   Write-Host "  .\dev.ps1 listen          voice mode"
   Write-Host "  .\dev.ps1 doctor"
   Write-Host "  .\dev.ps1 test [pytest args]"
+  Write-Host "  .\dev.ps1 install         put an 'IO' shortcut on the Desktop"
 }
 
 switch ($Command.ToLower()) {
@@ -204,6 +231,7 @@ switch ($Command.ToLower()) {
   }
   "listen"  { uv run io listen @Rest }
   "doctor"  { uv run io doctor }
+  "install" { Do-Install }
   "test" {
     Ensure-Postgres
     $env:IO_TEST_DATABASE_URL = $TestDbUrl
