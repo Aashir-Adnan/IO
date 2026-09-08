@@ -103,11 +103,25 @@ _WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
 def whisper_model_for(profile: str) -> str:
     return _WHISPER_BY_PROFILE.get(profile, "base")
 
-def _repo_root_config() -> Path:
-    return Path(__file__).resolve().parent.parent / "config.toml"
+def _candidate_config_paths() -> list[Path]:
+    return [
+        Path("config.toml"),
+        Path(os.path.expanduser("~/.config/io/config.toml")),
+        Path(__file__).resolve().parent.parent / "config.toml",
+    ]
+
+def config_source(path: str | Path | None = None) -> Path:
+    """The config.toml that load_config would read: explicit path, else the
+    first of CWD / ~/.config/io / the bundled repo-root file that exists."""
+    if path is not None:
+        return Path(path)
+    for p in _candidate_config_paths():
+        if p.exists():
+            return p
+    return _candidate_config_paths()[-1]
 
 def load_config(path: str | Path | None = None) -> Config:
-    p = Path(path) if path is not None else _repo_root_config()
+    p = config_source(path)
     if not p.exists():
         raise ConfigError(f"config file not found: {p}")
     try:

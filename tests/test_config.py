@@ -162,3 +162,19 @@ def test_voice_and_capture_defaults(tmp_path):
     from io_assistant.config import whisper_model_for
     assert whisper_model_for("light") == "base"
     assert whisper_model_for("quality") == "small"
+
+
+def test_load_config_prefers_user_config(tmp_path, monkeypatch):
+    good = (Path(__file__).resolve().parents[1] / "config.toml").read_text()
+    user_dir = tmp_path / "userhome" / ".config" / "io"
+    user_dir.mkdir(parents=True)
+    (user_dir / "config.toml").write_text(good)
+
+    real_expand = __import__("os.path", fromlist=["expanduser"]).expanduser
+    monkeypatch.setattr(
+        "os.path.expanduser",
+        lambda p: p.replace("~", str(tmp_path / "userhome"), 1)
+        if p.startswith("~") else real_expand(p))
+    monkeypatch.chdir(tmp_path)  # no ./config.toml here
+    cfg = load_config()
+    assert cfg.embedding_dim == 768
