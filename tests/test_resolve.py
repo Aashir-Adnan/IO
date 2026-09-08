@@ -109,3 +109,12 @@ def test_create_inserts_with_embedding(db, config):
     row = db.execute(select(m.Person).where(m.Person.id == new_id)).scalar_one()
     assert row.canonical_name == "Zephyr"
     assert row.embedding is not None
+
+
+@requires_db
+def test_lookup_returns_id_or_none(db, config):
+    db.add(m.Person(canonical_name="Nafay", aliases=[]))
+    db.flush()
+    r = EntityResolver(db, StubEmbedder(), config.resolver)
+    assert isinstance(r.lookup("person", "nafay"), int)
+    assert r.lookup("person", "Absolutely Nobody") is None

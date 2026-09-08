@@ -126,6 +126,39 @@ class EntityResolver:
         # 4. none
         return ResolveOutcome(None, True, False, None, None)
 
+    def lookup(self, entity_type: EntityType, name: str) -> int | None:
+        """Read-only resolve for queries: exact -> fuzzy -> vector, best id or
+        None. No create, no gate — a near vector match still counts."""
+        rows = self._candidate_rows(entity_type, name, [])
+        lowered = name.lower()
+        for cid, cname, caliases in rows:
+            stored = {cname.lower(), *[a.lower() for a in (caliases or [])]}
+            if lowered in stored:
+                return cid
+        best_id: int | None = None
+        best_score = -1.0
+        for cid, cname, caliases in rows:
+            score = max(
+                fuzz.token_set_ratio(name, c) for c in (cname, *(caliases or []))
+            )
+            if score > best_score:
+                best_score, best_id = score, cid
+        if best_id is not None and best_score >= self.cfg.fuzzy_threshold:
+            return best_id
+
+        model, _name_col = self._model_col(entity_type)
+        vec = self.embedder.embed_one(name)
+        dist = model.embedding.cosine_distance(vec).label("dist")
+        row = self.session.execute(
+            select(model.id, dist)
+            .where(model.embedding.isnot(None))
+            .order_by(dist.asc())
+            .limit(1)
+        ).first()
+        if row is not None and (1.0 - float(row[1])) >= self.cfg.vector_similarity_threshold:
+            return row[0]
+        return None
+
     def create(self, entity_type: EntityType, name: str, aliases: list[str]) -> int:
         model, name_attr = _TABLES[entity_type]
         obj = model(**{name_attr: name, "aliases": list(aliases)})
