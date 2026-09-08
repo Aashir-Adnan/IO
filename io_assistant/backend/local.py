@@ -11,7 +11,10 @@ from io_assistant.config import Config
 from io_assistant.models_domain import AnswerShape, ExtractionResult, Intent
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT  # Task 8 provides these
 
-from io_assistant.backend.interface import BackendParseError  # single shared class
+from io_assistant.backend.interface import (  # single shared class
+    BackendParseError,
+    render_context,
+)
 
 __all__ = ["LocalBackend", "LocalBackendError", "BackendParseError"]
 
@@ -67,10 +70,12 @@ class LocalBackend:
                 f"ollama chat returned an unexpected body: {data!r}"
             ) from e
 
-    def route(self, utterance: str) -> Intent:
+    def route(self, utterance: str, *, context: str | None = None) -> Intent:
         out = self._chat(
             "You are a precise classifier.",
-            _load_prompt("route.txt").format(utterance=utterance),
+            _load_prompt("route.txt").format(
+                context=render_context(context), utterance=utterance
+            ),
             json_mode=False,
         )
         token = out.strip().upper().split()[0] if out.strip() else ""
@@ -94,12 +99,15 @@ class LocalBackend:
         except Exception as e:
             raise BackendParseError(str(e)) from e
 
-    def plan(self, question: str, now: datetime) -> dict:
+    def plan(
+        self, question: str, now: datetime, *, context: str | None = None
+    ) -> dict:
         out = self._chat(
             "You convert a question into a retrieval plan. Output one JSON "
             "object and nothing else.",
             _load_prompt("plan.txt").format(
-                now=now.isoformat(), question=question
+                context=render_context(context),
+                now=now.isoformat(), question=question,
             ),
             json_mode=True,
         )
@@ -111,13 +119,26 @@ class LocalBackend:
             raise BackendParseError(f"plan is not an object: {out!r}")
         return data
 
-    def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
+    def phrase(
+        self, question: str, rows: list[dict], shape: AnswerShape,
+        *, context: str | None = None,
+    ) -> str:
         return self._chat(
             "You answer strictly from the provided rows.",
             _load_prompt("respond.txt").format(
+                context=render_context(context),
                 question=question,
                 rows=json.dumps(rows, default=str),
                 shape=shape,
             ),
             json_mode=False,
         )
+
+    def acknowledge(self, facts: str, *, context: str | None = None) -> str:
+        return self._chat(
+            "You confirm saved items as a calm personal assistant.",
+            _load_prompt("acknowledge.txt").format(
+                context=render_context(context), facts=facts
+            ),
+            json_mode=False,
+        ).strip()

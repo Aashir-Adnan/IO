@@ -7,7 +7,7 @@ from importlib import resources
 from io_assistant.config import Config
 from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
-from io_assistant.backend.interface import BackendParseError
+from io_assistant.backend.interface import BackendParseError, render_context
 
 
 class AnthropicBackendError(Exception):
@@ -74,10 +74,12 @@ class AnthropicBackend:
         parts = [b.text for b in msg.content if getattr(b, "type", None) == "text"]
         return "".join(parts).strip()
 
-    def route(self, utterance: str) -> Intent:
+    def route(self, utterance: str, *, context: str | None = None) -> Intent:
         out = self._complete(
             "You are a precise classifier. Reply with one word.",
-            _prompt("route.txt").format(utterance=utterance),
+            _prompt("route.txt").format(
+                context=render_context(context), utterance=utterance
+            ),
             max_tokens=16,
         )
         token = out.upper().split()[0] if out else ""
@@ -102,11 +104,16 @@ class AnthropicBackend:
         except Exception as e:
             raise BackendParseError(str(e)) from e
 
-    def plan(self, question: str, now: datetime) -> dict:
+    def plan(
+        self, question: str, now: datetime, *, context: str | None = None
+    ) -> dict:
         out = self._complete(
             "You convert a question into a retrieval plan. Output one JSON "
             "object and nothing else.",
-            _prompt("plan.txt").format(now=now.isoformat(), question=question),
+            _prompt("plan.txt").format(
+                context=render_context(context),
+                now=now.isoformat(), question=question,
+            ),
             max_tokens=512,
         )
         out = (
@@ -124,13 +131,26 @@ class AnthropicBackend:
             raise BackendParseError(f"plan is not an object: {out!r}")
         return data
 
-    def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
+    def phrase(
+        self, question: str, rows: list[dict], shape: AnswerShape,
+        *, context: str | None = None,
+    ) -> str:
         return self._complete(
             "You answer strictly from the provided rows.",
             _prompt("respond.txt").format(
+                context=render_context(context),
                 question=question,
                 rows=json.dumps(rows, default=str),
                 shape=shape,
             ),
             max_tokens=800,
+        )
+
+    def acknowledge(self, facts: str, *, context: str | None = None) -> str:
+        return self._complete(
+            "You confirm saved items as a calm personal assistant.",
+            _prompt("acknowledge.txt").format(
+                context=render_context(context), facts=facts
+            ),
+            max_tokens=120,
         )

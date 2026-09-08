@@ -27,7 +27,7 @@ Rules:
 - answer_shape: "markdown" for lists/tables, "diagram" only if a chart/timeline
   is asked for, else "text".
 
-Question (assume "now" is {now}):
+{context}Question (assume "now" is {now}):
 {question}
 
 Output the JSON object only:

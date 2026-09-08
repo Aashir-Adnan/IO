@@ -8,7 +8,7 @@ Shape:
   several rows.
 - "diagram": a single fenced ```mermaid block and nothing else.
 
-Question:
+{context}Question:
 {question}
 
 Rows (JSON):

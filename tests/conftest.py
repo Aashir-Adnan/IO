@@ -98,7 +98,13 @@ class FakeBackend:
         self._extraction = ExtractionResult()
         self._plan: dict = {}
         self._answer = ""
+        self._ack = ""
         self.calls: list[str] = []
+        self.last_context: str | None = None
+
+    def _ctx(self, c):
+        if c:
+            self.last_context = c
 
     def set_intent(self, i: Intent):
         self._intent = i
@@ -112,7 +118,11 @@ class FakeBackend:
     def set_plan(self, d: dict):
         self._plan = d
 
-    def route(self, utterance: str) -> Intent:
+    def set_ack(self, s: str):
+        self._ack = s
+
+    def route(self, utterance: str, *, context: str | None = None) -> Intent:
+        self._ctx(context)
         self.calls.append("route")
         return self._intent
 
@@ -120,13 +130,20 @@ class FakeBackend:
         self.calls.append("extract")
         return self._extraction
 
-    def plan(self, question: str, now: datetime) -> dict:
+    def plan(self, question: str, now: datetime, *, context: str | None = None) -> dict:
+        self._ctx(context)
         self.calls.append("plan")
         return self._plan
 
-    def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str:
+    def phrase(self, question, rows, shape, *, context: str | None = None) -> str:
+        self._ctx(context)
         self.calls.append("phrase")
         return self._answer
+
+    def acknowledge(self, facts: str, *, context: str | None = None) -> str:
+        self._ctx(context)
+        self.calls.append("acknowledge")
+        return self._ack
 
 
 @pytest.fixture

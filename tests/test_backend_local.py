@@ -76,3 +76,15 @@ def test_local_phrase_returns_text(config, monkeypatch):
     _patch_chat(monkeypatch, "You did leg day yesterday.")
     out = LocalBackend(config).phrase("gym?", [{"title": "leg day"}], "text")
     assert out == "You did leg day yesterday."
+
+
+def test_local_route_includes_context(config, monkeypatch):
+    fc = _patch_chat(monkeypatch, "QUERY")
+    LocalBackend(config).route("and Sana?", context="you: what about Nafay\nio: ok")
+    user_msg = fc.last["messages"][-1]["content"]
+    assert "Recent conversation" in user_msg and "Nafay" in user_msg
+
+
+def test_local_acknowledge_returns_line(config, monkeypatch):
+    _patch_chat(monkeypatch, "Logged your dinner with Nafay.")
+    assert LocalBackend(config).acknowledge('event "dinner"; with Nafay') == "Logged your dinner with Nafay."
