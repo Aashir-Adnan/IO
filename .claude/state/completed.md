@@ -1,5 +1,25 @@
 # Completed (newest first)
 
+## 2026-09-08 — Phase 2C: media library & captioning
+Branch `io-phase-2c-media` (from `main` post-2A). Spec
+`…-io-phase-2-media-library-design.md`, plan `…-io-phase-2c-media-library.md`
+(10 tasks). Migration `0005`: `file_nodes.thumb_path` + `file_captions`.
+`io_assistant/files/thumbs.py` (Pillow — 512px webp thumbs, EXIF
+`DateTimeOriginal`; video → film glyph). `index.py` media branch (media_kind +
+captured_at + thumb, no chunks/summary, embedding = caption). `command.py`
+`open` action + `resolve_folder`. `gallery.open_folder` → `GalleryCard` /
+`GalleryItem`. `caption.apply_caption` — user-authored ground truth →
+`Extractor` + `EntityResolver` + gate (records ignored; links `source="caption"`;
+caption embedded → media searchable via `FileSearcher`). `PendingCaption` held
+by the caption routes, not `handle()`. Orchestrator `_file_open` → `gallery`
+card; frontend routes it to the gallery view. Service: `/files/raw` (Range),
+`/files/thumb`, `/files/open` (409 many), `/files/caption` + `/confirm`,
+`/files/transcribe`. `frontend/views/gallery.js` — grid + `<img>`/`<video>` +
+caption Composer + entity chips + gate row; Open button on dir roots. New dep
+`pillow`. Full suite 292 pass / 9 skip; socket guard green. Deferred: ffmpeg
+video thumbs, HEIC, EXIF GPS.
+
+
 ## 2026-09-08 — Phase 2A: file index & text exploration
 Branch `io-phase-2a-file-index` (not yet merged). Spec
 `…-io-phase-2-file-index-design.md`, plan `…-io-phase-2a-file-index.md` (15

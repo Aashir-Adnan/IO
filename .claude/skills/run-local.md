@@ -109,8 +109,10 @@ uv run io files search what does my lease say about pets
 uv run io files list ; uv run io files status
 ```
 Or by voice/text through the assistant: *"remember my Taxes folder"*,
-*"what does my lease say about pets"*. **Note:** when `[backend].provider` is
-not `local`, file text is sent to `api.anthropic.com` (embeddings stay local).
+*"what does my lease say about pets"*, *"open the folder called Hunza Trip"*
+(→ in-app photo/video gallery; click an item, type or speak a caption to link
+it to people / places). **Note:** when `[backend].provider` is not `local`,
+file and caption text is sent to `api.anthropic.com` (embeddings stay local).
 
 ## Go / no-go
 

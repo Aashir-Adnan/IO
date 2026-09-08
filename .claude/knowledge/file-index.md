@@ -71,9 +71,48 @@ the `[files]` config comment says the same.
   (`components/card.js`) lists hits, click → `GET /files/content` in a `<pre>`
   viewer.
 
+## Media (Phase 2C)
+
+- **`0005`** adds `file_nodes.thumb_path` and `file_captions` (id, file_id,
+  text, source, created_at — full caption history; `file_nodes.caption` mirrors
+  the latest and is the media node's `embedding`).
+- `thumbs.py` — `make_thumb` (Pillow: `exif_transpose` + 512px webp; video →
+  `None` → frontend film glyph; any failure → `None`), `exif_captured_at`
+  (EXIF `DateTimeOriginal` → aware UTC).
+- `index.py` media branch — a `media_extensions` node gets `media_kind`,
+  `content_hash`, `captured_at`, `thumb_path`; **no chunks, no summary**;
+  `embedding` stays NULL until a caption exists.
+- `command.py` — `classify_file_command` gains `action="open"` (open/show/
+  browse/pull up + a folder-ish word, no register verb); `resolve_folder`
+  (fuzzy over registered dirs + a bounded depth-3 walk under allowlist roots).
+- `gallery.open_folder(session, folder, *, gate, indexer, index, config) ->
+  GalleryCard` — registers the folder if uncovered, indexes each media file
+  (metadata + thumb, fast), returns `GalleryItem`s
+  (`thumb_url`/`raw_url`=`/files/{thumb,raw}?path=…`, caption, linked entities,
+  captured_at), sorted newest-first.
+- `caption.apply_caption(...)` — user-authored ground truth: `Extractor` +
+  `EntityResolver` (person/place/item via `resolve`, occasions by name) with
+  the **confirmation gate** on ambiguity; new entities created like STORE;
+  `records` in the extraction are **ignored**; links written `source="caption"`;
+  the caption is embedded → the media node becomes searchable via
+  `FileSearcher`. `PendingCaption` is held by the service's
+  `app.state.caption_pending`, **not** `Orchestrator.handle()`.
+- Orchestrator: `_file_turn` `open` action → `_file_open` → `gallery` card
+  (`intent_kind="gallery"`); the frontend routes any turn carrying a `gallery`
+  card to the gallery view.
+- Service (all 404 when disabled): `GET /files/raw?path=` (`FileResponse` —
+  Starlette honours `Range` → 206), `GET /files/thumb?path=` (generate-on-miss),
+  `POST /files/open` (409 `{candidates}` on many), `POST /files/caption` +
+  `POST /files/caption/confirm`, `POST /files/transcribe` (multipart audio →
+  `{transcript}` — voice captions; `/voice` untouched).
+- Frontend `frontend/views/gallery.js` — thumbnail grid → detail pane with
+  `<img>` / `<video controls>` + a caption `Composer` (type or mic) + entity
+  chips (open the Memory Inspector) + an inline gate-confirm row. Reached by a
+  turn's `gallery` card or the **Open** button on a dir root in the Files view.
+
 ## Deferred
 
-Media gallery / thumbnails / video playback / per-item captioning →
-**Spec C** (`…-io-phase-2-media-library-design.md`). Also: agentic exploration
-loop, `query`↔`file` cross-fallback, filesystem watching, learned co-retrieval
-edges, OCR for scanned PDFs (spec §13).
+Video frame-grab thumbnails (ffmpeg), HEIC (`pillow-heif`), EXIF GPS → `Place`.
+Also from Phase 2A: agentic exploration loop, `query`↔`file` cross-fallback,
+filesystem watching, learned co-retrieval edges, OCR for scanned PDFs
+(spec A §13).

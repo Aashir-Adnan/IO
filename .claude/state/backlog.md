@@ -7,12 +7,12 @@
     cross-fallback in one turn; filesystem watching vs lazy hash checks;
     learned co-retrieval edges; OCR for scanned PDFs; opt-in `-m ollama`
     `file`-class router accuracy re-baseline.
-  - Spec C `…-io-phase-2-media-library-design.md` — gallery view, thumbnails,
-    in-app image/video viewer, per-item captioning → entity links (mig 0005,
-    `file_captions`). Depends on A.
+  - ~~Spec C — media library & captioning~~ — DONE 2026-09-08 on branch
+    `io-phase-2c-media` (292 pass). Not merged. See completed.md. Follow-ups:
+    ffmpeg video-frame thumbnails; HEIC via `pillow-heif`; EXIF GPS → `Place`.
   - Spec B `…-io-phase-2-desktop-packaging-design.md` — `IO.exe` (PyInstaller),
-    logo→`.ico`, single-instance lock. Independent. Needs `assets/io-logo.png`
-    from the user.
+    logo→`.ico`, single-instance lock. Independent. **Needs `assets/io-logo.png`
+    from the user.**
 
 - ~~Plan 6: Nocturne desktop client~~ — DONE 2026-09-08 (see completed.md).
   Phase 1.5 complete.

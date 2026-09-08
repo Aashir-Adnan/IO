@@ -42,6 +42,10 @@ dedup, `content_hash`/`index_hash` staleness gate, `summary`+`embedding`,
 only on a resolver hit). Not life-memory — a separate subsystem
 (`io_assistant/files/`, `.claude/knowledge/file-index.md`).
 
+**Media (migration 0005)** — `file_nodes.thumb_path` + `file_captions`
+(user-authored media captions, full history; latest mirrors to
+`file_nodes.caption` and is the media node's `embedding`).
+
 **`utterances.resolved_intent`** takes `store` | `query` | `file` | `unknown`.
 
 **Migrations** — Alembic only, from the first commit. No ad-hoc `ALTER`. The
