@@ -1,8 +1,12 @@
 import datetime as dt
+import shutil
+from pathlib import Path
 
 import pytest
 
 from tests.conftest import requires_db
+
+FX = Path(__file__).parent / "fixtures" / "files"
 from io_assistant.orchestrator import Orchestrator
 from io_assistant.config import FilesConfig
 from io_assistant.files.store import FileIndex
@@ -57,3 +61,17 @@ def test_file_register_phrase_indexes(db, files_config, fake_backend, tmp_path):
     res = _handle(orch, db, "remember my Taxes folder")
     assert res.intent_kind in ("ack", "unknown")
     assert db.query(m.FileNode).filter_by(registered_root=True).count() == 1
+
+
+@requires_db
+def test_open_folder_returns_gallery_card(db, files_config, fake_backend, tmp_path):
+    album = tmp_path / "Hunza Trip"
+    album.mkdir()
+    shutil.copy(FX / "pic.jpg", album / "a.jpg")
+    files_config.files.thumbs_dir = str(tmp_path / "thumbs")
+    fake_backend.set_intent("file")
+    orch = Orchestrator(files_config, session_factory=lambda: db, backend=fake_backend)
+    res = _handle(orch, db, "open the folder called Hunza Trip")
+    assert res.intent_kind == "gallery"
+    assert res.cards and res.cards[0].type == "gallery"
+    assert res.cards[0].count == 1

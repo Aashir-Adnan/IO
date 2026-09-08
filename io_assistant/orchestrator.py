@@ -287,12 +287,54 @@ class Orchestrator:
         cmd = classify_file_command(text)
         if cmd.action == "register":
             return self._file_register(session, cmd)
+        if cmd.action == "open":
+            return self._file_open(session, cmd)
         answer = self._files.search(session, text, now, gate=self._gate,
                                     context=history)
         return HandleResult(
             "file", None, answer.text, cards=[files_card(answer)],
             intent_kind="files", shape=answer.shape,
         )
+
+    def _file_open(self, session, cmd) -> HandleResult:
+        from io_assistant.files.cards import gallery_card
+        from io_assistant.files.command import resolve_folder
+        from io_assistant.files.gallery import open_folder
+        from io_assistant.files.paths import AccessDenied
+
+        target = None
+        if cmd.path:
+            try:
+                target = self._gate.resolve(cmd.path)
+            except AccessDenied as e:
+                return HandleResult("file", None,
+                                    f"I can't open that: {e.reason}.",
+                                    intent_kind="error")
+        else:
+            res = resolve_folder(cmd.phrase or "", session, self._gate,
+                                 self._config.files)
+            if res.kind == "one":
+                target = res.path
+            elif res.kind == "many":
+                names = ", ".join(p.name for p in res.candidates)
+                return HandleResult("file", None,
+                                    f"I found a few — which one? {names}",
+                                    intent_kind="unknown")
+            else:
+                return HandleResult("file", None,
+                                    "I couldn't find a folder called that.",
+                                    intent_kind="unknown")
+        try:
+            card = open_folder(session, target, gate=self._gate,
+                               indexer=self._indexer, index=self._file_index,
+                               config=self._config.files)
+        except AccessDenied as e:
+            return HandleResult("file", None, f"I can't open that: {e.reason}.",
+                                intent_kind="error")
+        return HandleResult(
+            "file", None,
+            f"Opening {target.name} — {card.count} item(s).",
+            cards=[gallery_card(card)], intent_kind="gallery", shape="text")
 
     def _file_register(self, session, cmd) -> HandleResult:
         from io_assistant.files.command import resolve_register_target
