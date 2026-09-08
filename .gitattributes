@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Binary test fixtures — never touch line endings
+tests/fixtures/files/*.pdf   binary
+tests/fixtures/files/*.docx  binary
+tests/fixtures/files/*.bin   binary
+tests/fixtures/files/*.jpg   binary
+tests/fixtures/files/*.png   binary
+tests/fixtures/files/*.mp4   binary
