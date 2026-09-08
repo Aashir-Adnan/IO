@@ -45,6 +45,34 @@ export function renderCard(card, ctx) {
     el.className = "card-sources mono";
     el.innerHTML = `${icon("brain", { size: 13 })}<span>${card.count} ${card.count === 1 ? "MEMORY" : "MEMORIES"} USED</span>` +
       (card.labels || []).map((l) => `<span class="sep">·</span><span>${escape(l).toUpperCase()}</span>`).join("");
+  } else if (card.type === "files") {
+    el.className = "card card-files";
+    el.innerHTML = `<div class="card-h mono"><span>${card.searched || 0} FILES SEARCHED</span></div>`;
+    for (const h of card.hits || []) {
+      const base = h.path.split(/[\\/]/).pop();
+      const row = document.createElement("button");
+      row.className = "file-row";
+      row.innerHTML =
+        `${icon(h.media_kind ? "file" : "fileText", { size: 14, cls: "file-i" })}` +
+        `<span class="file-title">${escape(h.title || base)}</span>` +
+        `<span class="file-path mono">${escape(h.path)}</span>` +
+        `<span class="file-why">${escape(h.why || "")}</span>`;
+      row.addEventListener("click", async () => {
+        if (!ctx || !ctx.api) return;
+        try {
+          const doc = await ctx.api.fileContent(h.path);
+          if (ctx.openInspector) {
+            ctx.openInspector({ kind: "file", title: doc.title || h.path, text: doc.text });
+          } else {
+            const pre = document.createElement("pre");
+            pre.className = "file-dump";
+            pre.textContent = doc.text;
+            el.appendChild(pre);
+          }
+        } catch { /* ignore */ }
+      });
+      el.appendChild(row);
+    }
   }
   return el;
 }

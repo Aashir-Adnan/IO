@@ -37,6 +37,30 @@ export function Api(base = "") {
     async newConversation() { return j(await fetch(`${b}/conversation`, { method: "POST" })); },
     async entity(etype, id) { return j(await fetch(`${b}/entity/${etype}/${id}`)); },
 
+    async files() { return j(await fetch(`${b}/files`)); },
+    async registerFile(path) {
+      return j(await fetch(`${b}/files`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path }),
+      }));
+    },
+    async forgetFile(path) {
+      return j(await fetch(`${b}/files`, {
+        method: "DELETE", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path }),
+      }));
+    },
+    async reindexFiles(path) {
+      return j(await fetch(`${b}/files/reindex`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: path || null }),
+      }));
+    },
+    async filesStatus() { return j(await fetch(`${b}/files/status`)); },
+    async fileContent(path) {
+      return j(await fetch(`${b}/files/content?path=` + encodeURIComponent(path)));
+    },
+
     connectWs(onFrame) {
       let ws, closed = false, backoff = 500;
       const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;

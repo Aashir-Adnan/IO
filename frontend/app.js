@@ -4,17 +4,20 @@ import { icon } from "./vendor/icons.js";
 import { mount as mountStandby } from "./views/standby.js";
 import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
+import { mount as mountFiles } from "./views/files.js";
 import { Drawer } from "./components/drawer.js";
 
 const VIEWS = {
   standby: mountStandby,
   talk: mountListening,
   conversation: mountConversation,
+  files: mountFiles,
 };
 
 const NAV = [
   { key: "waveform", nav: "standby", label: "Talk" },
   { key: "chatDots", nav: "conversation", label: "Conversation" },
+  { key: "folders", nav: "files", label: "Files" },
   { key: "brain", nav: "memory", label: "Memory" },
   { key: "listChecks", nav: "tasks", label: "Tasks" },
   { key: "usersThree", nav: "people", label: "People" },
