@@ -1,5 +1,18 @@
 # Backlog (highest priority on top)
 
+- Live-run findings 2026-09-08 (anthropic/Haiku backend, real end-to-end):
+  - Router misfires on some natural query phrasings ("what do I need to do?" →
+    UNKNOWN; "what tasks do I have?" → QUERY). Tighten `prompts/route.txt`,
+    grow the fixture. Already a backlog item — now confirmed against Haiku, not
+    just llama3.2:3b.
+  - `ground("today", now)` returns `now` (time-of-day carried), so an event
+    stored at 02:29 reads back as "02:29 AM". "today"/"yesterday"/"tomorrow"
+    should snap to a canonical time (e.g. 09:00 or midnight) unless a time is
+    given. `_at_time` helper already exists in `resolve/dates.py`.
+  - Extractor (Haiku) sometimes lists a role word as a person ("call the
+    dentist" → people: ["dentist"]). Tighten the extract prompt / add a
+    post-filter for common role nouns, or lower confidence so it gates.
+
 - Extraction eval quality: `tests/fixtures/utterances_store.json` cases 1-3 & 6
   overlap the few-shot `_EXAMPLES` in `extract/schema.py`, so
   `test_extractor_against_fixtures` partly measures shot reproduction. Add
