@@ -16,9 +16,12 @@ host = "127.0.0.1"
 port = 8765
 
 [voice]
-tts_voice = "en_US-amy-medium"
+tts_voice = "en_US-hfc_female-medium"
 voices_dir = "~/.local/share/io/piper"
 speak_in_app = false
+length_scale = 1.06
+noise_scale = 0.667
+noise_w_scale = 0.85
 
 [capture]
 hotkey = "<ctrl>+<alt>+space"

@@ -35,10 +35,13 @@ class ServiceConfig(BaseModel):
     frontend_dir: str | None = None
 
 class VoiceConfig(BaseModel):
-    tts_voice: str = "en_US-amy-medium"
+    tts_voice: str = "en_US-hfc_female-medium"
     voices_dir: str = "~/.local/share/io/piper"
     speak_in_app: bool = False
     piper_bin: str | None = None
+    length_scale: float = 1.06
+    noise_scale: float = 0.667
+    noise_w_scale: float = 0.85
 
     @property
     def resolved_voice_path(self) -> Path:
