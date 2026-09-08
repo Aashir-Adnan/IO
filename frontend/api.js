@@ -60,6 +60,29 @@ export function Api(base = "") {
     async fileContent(path) {
       return j(await fetch(`${b}/files/content?path=` + encodeURIComponent(path)));
     },
+    async openFolder({ path, phrase } = {}) {
+      return j(await fetch(`${b}/files/open`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: path || null, phrase: phrase || null }),
+      }));
+    },
+    async caption(path, text, source = "text") {
+      return j(await fetch(`${b}/files/caption`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path, text, source }),
+      }));
+    },
+    async captionConfirm(pending_token) {
+      return j(await fetch(`${b}/files/caption/confirm`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pending_token }),
+      }));
+    },
+    async transcribeAudio(wavBlob) {
+      const fd = new FormData();
+      fd.append("audio", wavBlob, "caption.wav");
+      return j(await fetch(`${b}/files/transcribe`, { method: "POST", body: fd }));
+    },
 
     connectWs(onFrame) {
       let ws, closed = false, backoff = 500;

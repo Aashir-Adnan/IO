@@ -61,7 +61,7 @@ export function sendTurn(ctx, text, { confirmToken } = {}) {
   const viaWs = ctx.ws && ctx.ws.send(frame);
   if (!viaWs) {
     ctx.api.sendText({ text, conversationId: frame.conversation_id, confirmToken })
-      .then((r) => ctx.onTurn && ctx.onTurn({ ...r, type: "answer" }))
+      .then((r) => (ctx.handleTurn || ctx.onTurn)({ ...r, type: "answer" }))
       .catch(() => renderError(thread));
   }
 }

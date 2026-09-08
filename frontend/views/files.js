@@ -31,10 +31,19 @@ export function mount(root, ctx) {
       <div class="files-root">
         <span class="files-root-name">${icon(r.kind === "dir" ? "folder" : "fileText", { size: 15 })} ${esc(r.path)}</span>
         <span class="files-root-stats mono">${status.indexed ?? 0}/${status.total ?? 0} indexed${status.stale ? ` · ${status.stale} stale` : ""}</span>
+        ${r.kind === "dir" ? `<button class="files-open" data-path="${esc(r.path)}">Open</button>` : ""}
         <button class="files-reindex" data-path="${esc(r.path)}">Reindex</button>
         <button class="files-remove" data-path="${esc(r.path)}">Remove</button>
       </div>`).join("");
     rootsEl.innerHTML = rows || `<p class="files-empty">No files registered yet.</p>`;
+    rootsEl.querySelectorAll(".files-open").forEach((b) => {
+      b.onclick = async () => {
+        try {
+          const card = await ctx.api.openFolder({ path: b.dataset.path });
+          ctx.store.set({ view: "gallery", gallery: { type: "gallery", ...card } });
+        } catch { /* ignore */ }
+      };
+    });
     rootsEl.querySelectorAll(".files-reindex").forEach((b) => {
       b.onclick = async () => { await ctx.api.reindexFiles(b.dataset.path); poll(); };
     });

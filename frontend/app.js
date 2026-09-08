@@ -5,6 +5,7 @@ import { mount as mountStandby } from "./views/standby.js";
 import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
 import { mount as mountFiles } from "./views/files.js";
+import { mount as mountGallery } from "./views/gallery.js";
 import { Drawer } from "./components/drawer.js";
 
 const VIEWS = {
@@ -12,6 +13,7 @@ const VIEWS = {
   talk: mountListening,
   conversation: mountConversation,
   files: mountFiles,
+  gallery: mountGallery,
 };
 
 const NAV = [
@@ -34,6 +36,7 @@ const store = createStore({
   connection: "connecting",
   typingCps: 45,
   minThinkMs: 600,
+  gallery: null,
 });
 
 const api = Api("");
@@ -53,6 +56,13 @@ function stopAudio() {
 }
 
 const ctx = { store, api, get ws() { return ws; }, speak, stopAudio, goto: (v) => store.set({ view: v }) };
+
+function handleTurn(frame) {
+  const gc = (frame.cards || []).find((c) => c.type === "gallery");
+  if (gc) { store.set({ view: "gallery", gallery: gc }); return; }
+  ctx.onTurn && ctx.onTurn(frame);
+}
+ctx.handleTurn = handleTurn;
 
 function renderRail() {
   const el = document.getElementById("railnav");
@@ -99,7 +109,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   ws = api.connectWs((frame) => {
     if (frame.type === "_open") store.set({ connection: "connected" });
     else if (frame.type === "_close") store.set({ connection: "disconnected" });
-    else if (frame.type === "answer") ctx.onTurn && ctx.onTurn(frame);
+    else if (frame.type === "answer") handleTurn(frame);
   });
   try {
     const vh = await api.voiceHealth();
