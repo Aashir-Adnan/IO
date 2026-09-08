@@ -20,6 +20,9 @@
   Fix: (a) `ground()` should parse ISO-8601 and common absolute date strings via
   `dateutil.parser` and return ok=True; (b) tighten the extract prompt /
   post-process to strip model-invented ISO timestamps back toward "today".
+  (2026-09-08: relative durations now handled — "N weeks/months/years ago",
+  "in N weeks", "a year ago", "last/next month|year", "for N years now". ISO /
+  absolute-string parsing still open.)
 - CLI hardening (Plan 3/4 or standalone): `io repl` should catch per-line
   exceptions and continue instead of dying; persist `stripped` not raw `line`
   into `Utterance.text` (cli.py); rename `_make_session_factory` (returns a
