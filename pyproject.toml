@@ -21,6 +21,8 @@ dependencies = [
     "numpy>=2.4.6",
     "piper-tts>=1.8.0",
     "faster-whisper>=1.2.1",
+    "pynput>=1.8.2",
+    "webrtcvad-wheels>=2.0.14",
 ]
 
 [project.scripts]
