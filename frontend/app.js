@@ -81,9 +81,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") stopAudio();
 });
 
-let lastView = null;
+let lastView = store.get().view;
 store.subscribe((s) => {
-  const conn = document.getElementById("status");
   if (s.view !== lastView) { lastView = s.view; route(); }
 });
 
