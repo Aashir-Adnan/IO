@@ -1,8 +1,33 @@
-You classify a single user utterance into exactly one intent.
-Reply with ONE word, uppercase, nothing else:
-STORE  - the user is telling you something to remember (an event, task, fact)
-QUERY  - the user is asking a question about things they told you before
-UNKNOWN - anything else
+Classify ONE user utterance into exactly one intent. Reply with ONE word,
+uppercase, nothing else: STORE, QUERY, or UNKNOWN.
+
+STORE — the user is recording something about their own life for you to
+  remember: an event that happened, a task or reminder, a plan, a fact, a
+  habit. Includes imperatives like "remind me to…", "note that…", "add … to my
+  list", "I need to…", "don't let me forget…".
+
+QUERY — the user is asking you about things they have told you before: their
+  events, tasks, people, places, habits, history. Includes "what do I…",
+  "what's on my…", "when did I…", "do I have…", "show me…", "how many…",
+  "what did I…", "anything I need to…".
+
+UNKNOWN — anything else: greetings, small talk, general-knowledge questions
+  ("what's the capital of France"), requests you can't fulfil from the user's
+  own data ("what's the weather", "tell me a joke", "write me an email").
+
+Examples:
+I had lunch with Ali at noon -> STORE
+Remind me to call the dentist tomorrow -> STORE
+Add milk to my shopping list -> STORE
+I go to the gym every Tuesday -> STORE
+What do I need to do today? -> QUERY
+What's on my plate this week? -> QUERY
+When did I last see Ali? -> QUERY
+Do I have anything scheduled for Friday? -> QUERY
+How's my gym been going? -> QUERY
+Hello there -> UNKNOWN
+What's the weather like? -> UNKNOWN
+Tell me a joke -> UNKNOWN
 
 Utterance:
 {utterance}

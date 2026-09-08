@@ -1,38 +1,23 @@
 [
-  {
-    "utterance": "I had lunch with Ali at noon",
-    "intent": "store"
-  },
-  {
-    "utterance": "Went to the gym for 1 hour this morning",
-    "intent": "store"
-  },
-  {
-    "utterance": "Had a meeting with the team at 2 PM",
-    "intent": "store"
-  },
-  {
-    "utterance": "What did I do yesterday?",
-    "intent": "query"
-  },
-  {
-    "utterance": "Show me my activities from last week",
-    "intent": "query"
-  },
-  {
-    "utterance": "When did I last go to the gym?",
-    "intent": "query"
-  },
-  {
-    "utterance": "Hello there",
-    "intent": "unknown"
-  },
-  {
-    "utterance": "What's the weather like?",
-    "intent": "unknown"
-  },
-  {
-    "utterance": "Tell me a joke",
-    "intent": "unknown"
-  }
+  { "utterance": "I had lunch with Ali at noon", "intent": "store" },
+  { "utterance": "Went to the gym for 1 hour this morning", "intent": "store" },
+  { "utterance": "Had a meeting with the team at 2 PM", "intent": "store" },
+  { "utterance": "Remind me to renew my passport next month", "intent": "store" },
+  { "utterance": "Note that Sana's birthday is on the 12th", "intent": "store" },
+  { "utterance": "I need to submit the report by Friday", "intent": "store" },
+  { "utterance": "We're moving to the new office in October", "intent": "store" },
+  { "utterance": "Bench pressed 80kg today, felt strong", "intent": "store" },
+  { "utterance": "What did I do yesterday?", "intent": "query" },
+  { "utterance": "Show me my activities from last week", "intent": "query" },
+  { "utterance": "When did I last go to the gym?", "intent": "query" },
+  { "utterance": "What do I need to do?", "intent": "query" },
+  { "utterance": "What's on my plate this week?", "intent": "query" },
+  { "utterance": "Do I have anything on Friday?", "intent": "query" },
+  { "utterance": "Who was at the dinner with me last month?", "intent": "query" },
+  { "utterance": "How many times have I seen Ali this year?", "intent": "query" },
+  { "utterance": "Hello there", "intent": "unknown" },
+  { "utterance": "What's the weather like?", "intent": "unknown" },
+  { "utterance": "Tell me a joke", "intent": "unknown" },
+  { "utterance": "What's the capital of France?", "intent": "unknown" },
+  { "utterance": "Can you write me an email to my landlord?", "intent": "unknown" }
 ]
