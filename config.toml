@@ -27,6 +27,13 @@ noise_w_scale = 0.85
 hotkey = "<ctrl>+<alt>+space"
 passive = false
 
+[ui]
+name = ""
+fullscreen = true
+auto_speak = "voice"
+typing_cps = 45
+min_think_ms = 600
+
 [resolver]
 fuzzy_threshold = 92
 vector_similarity_threshold = 0.85

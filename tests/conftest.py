@@ -8,6 +8,7 @@ from io_assistant.models_domain import AnswerShape, ExtractionResult, Intent
 
 from io_assistant.config import (
     Config, BackendConfig, ResolverConfig, ServiceConfig, VoiceConfig, CaptureConfig,
+    UiConfig,
 )
 from io_assistant.db.base import make_engine, make_session_factory, Base
 from io_assistant.db import models  # noqa: F401 — register mappers
@@ -33,6 +34,7 @@ def config() -> Config:
         service=ServiceConfig(),
         voice=VoiceConfig(),
         capture=CaptureConfig(),
+        ui=UiConfig(),
     )
 
 

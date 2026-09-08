@@ -24,6 +24,7 @@ from io_assistant.service.schemas import (
     VoiceHealthOut,
     VoiceOut,
 )
+from io_assistant.service.panels import entity_panel, standby_panel
 from io_assistant.service.voice import VoiceModels, VoiceUnavailable
 
 __all__ = ["create_app"]
@@ -54,6 +55,8 @@ def create_app(
     app.state.recall_ms = 0
 
     def _run(body: UtteranceIn) -> TurnResponse:
+        import time
+
         pending = None
         if body.confirm_token:
             pending = app.state.pending.pop(body.confirm_token, None)
@@ -63,12 +66,17 @@ def create_app(
         store.append(conv_id, "user", text_in, source=body.source)
         history = format_context(store.recent_turns(conv_id))
 
+        t0 = time.perf_counter()
         if pending is not None:
             result = orchestrator.handle(pending.text, pending=pending, history=history)
         else:
             result = orchestrator.handle(
                 body.text, source=body.source, history=history
             )
+        if result.intent == "query":
+            ms = int((time.perf_counter() - t0) * 1000)
+            prev = app.state.recall_ms
+            app.state.recall_ms = ms if prev == 0 else (prev * 3 + ms) // 4
 
         msg_id = store.append(
             conv_id, "assistant", result.message,
@@ -170,6 +178,19 @@ def create_app(
             conversation_id=cid,
             messages=store.history(cid, before_id=before),
         )
+
+    @app.get("/entity/{etype}/{entity_id}")
+    def entity(etype: str, entity_id: int):
+        with factory() as s:
+            panel = entity_panel(s, etype, entity_id)
+        if panel is None:
+            raise HTTPException(status_code=404, detail="entity not found")
+        return panel
+
+    @app.get("/standby")
+    def standby():
+        with factory() as s:
+            return standby_panel(s, config, app.state.recall_ms)
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
