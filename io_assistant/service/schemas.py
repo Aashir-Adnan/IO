@@ -15,6 +15,14 @@ __all__ = [
     "ConversationOut",
     "ConversationSummary",
     "NewConversationOut",
+    "FileRegisterIn",
+    "FileRegisterOut",
+    "FilesListOut",
+    "FileForgetIn",
+    "FileForgetOut",
+    "FileReindexIn",
+    "FileReindexOut",
+    "FileContentOut",
 ]
 
 
@@ -88,3 +96,40 @@ class ConversationSummary(BaseModel):
 
 class NewConversationOut(BaseModel):
     conversation_id: int
+
+
+class FileRegisterIn(BaseModel):
+    path: str
+
+
+class FileRegisterOut(BaseModel):
+    root: str
+    discovered: int
+    skipped: list[str] = Field(default_factory=list)
+
+
+class FilesListOut(BaseModel):
+    enabled: bool
+    roots: list[dict] = Field(default_factory=list)
+
+
+class FileForgetIn(BaseModel):
+    path: str
+
+
+class FileForgetOut(BaseModel):
+    forgotten: int
+
+
+class FileReindexIn(BaseModel):
+    path: str | None = None
+
+
+class FileReindexOut(BaseModel):
+    queued: int
+
+
+class FileContentOut(BaseModel):
+    path: str
+    title: str | None = None
+    text: str

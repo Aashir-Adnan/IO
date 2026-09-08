@@ -17,6 +17,14 @@ from io_assistant.orchestrator import Orchestrator, PendingStore
 from io_assistant.service.schemas import (
     ConversationOut,
     ConversationSummary,
+    FileContentOut,
+    FileForgetIn,
+    FileForgetOut,
+    FileRegisterIn,
+    FileRegisterOut,
+    FileReindexIn,
+    FileReindexOut,
+    FilesListOut,
     HealthOut,
     NewConversationOut,
     TurnResponse,
@@ -191,6 +199,82 @@ def create_app(
     def standby():
         with factory() as s:
             return standby_panel(s, config, app.state.recall_ms)
+
+    app.state.index_queue = None
+    if config.files.enabled:
+        from io_assistant.files.paths import AccessDenied, AccessGate
+        from io_assistant.files.store import FileIndex
+        from io_assistant.files.index import FileIndexer
+        from io_assistant.files.queue import IndexQueue
+        from io_assistant.files.extract import read_document
+
+        gate = AccessGate(config.files)
+        file_index = FileIndex(factory)
+        indexer = FileIndexer(
+            orchestrator._embedder, orchestrator._backend,
+            config.files, config.resolver,
+        )
+        iq = IndexQueue(factory, indexer, gate)
+        iq.start()
+        app.state.index_queue = iq
+
+        @app.on_event("shutdown")
+        def _stop_queue():
+            iq.stop()
+
+        @app.post("/files", response_model=FileRegisterOut)
+        def files_register(body: FileRegisterIn):
+            with factory() as s:
+                try:
+                    target = gate.resolve(body.path)
+                    res = file_index.register(s, target, gate, config.files)
+                    s.commit()
+                except AccessDenied as e:
+                    raise HTTPException(status_code=400, detail=e.reason)
+                iq.enqueue_many(n.path for n in file_index.stale(s))
+            return FileRegisterOut(root=str(target), discovered=res.discovered,
+                                   skipped=res.skipped)
+
+        @app.get("/files", response_model=FilesListOut)
+        def files_list():
+            with factory() as s:
+                return FilesListOut(
+                    enabled=True, roots=file_index.status_summary(s)["roots"])
+
+        @app.delete("/files", response_model=FileForgetOut)
+        def files_forget(body: FileForgetIn):
+            with factory() as s:
+                n = file_index.forget(s, gate.key(gate.resolve(body.path)))
+                s.commit()
+            return FileForgetOut(forgotten=n)
+
+        @app.post("/files/reindex", response_model=FileReindexOut)
+        def files_reindex(body: FileReindexIn):
+            with factory() as s:
+                paths = [n.path for n in file_index.stale(s)]
+            iq.enqueue_many(paths)
+            return FileReindexOut(queued=len(paths))
+
+        @app.get("/files/status")
+        def files_status():
+            with factory() as s:
+                d = file_index.status_summary(s)
+            d["queue_depth"] = iq.depth()
+            return d
+
+        @app.get("/files/content", response_model=FileContentOut)
+        def files_content(path: str):
+            p = gate.resolve(path)
+            with factory() as s:
+                try:
+                    gate.assert_allowed(
+                        p, registered_keys=file_index.authorized_keys(s))
+                except AccessDenied as e:
+                    raise HTTPException(status_code=400, detail=e.reason)
+            doc = read_document(p, config.files)
+            if doc.status != "ok":
+                raise HTTPException(status_code=404, detail=doc.status)
+            return FileContentOut(path=str(p), title=doc.title, text=doc.text[:20000])
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
