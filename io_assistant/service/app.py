@@ -436,7 +436,11 @@ def create_app(
 
             async def get_response(self, path, scope):
                 resp = await super().get_response(path, scope)
-                resp.headers["Cache-Control"] = "no-store"
+                for h in ("etag", "last-modified"):
+                    if h in resp.headers:
+                        del resp.headers[h]
+                resp.headers["cache-control"] = "no-store, must-revalidate"
+                resp.headers["pragma"] = "no-cache"
                 return resp
 
         app.mount(

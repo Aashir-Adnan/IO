@@ -4,31 +4,21 @@ import { icon } from "./vendor/icons.js";
 import { mount as mountStandby } from "./views/standby.js";
 import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
-import { mount as mountFiles } from "./views/files.js";
 import { mount as mountGallery } from "./views/gallery.js";
 import { Drawer } from "./components/drawer.js";
+import { Settings } from "./components/settings.js";
 
 const VIEWS = {
   standby: mountStandby,
   talk: mountListening,
   conversation: mountConversation,
-  files: mountFiles,
   gallery: mountGallery,
 };
-
-const NAV = [
-  { key: "waveform", nav: "standby", label: "Talk" },
-  { key: "chatDots", nav: "conversation", label: "Conversation" },
-  { key: "folders", nav: "files", label: "Files" },
-  { key: "brain", nav: "memory", label: "Memory" },
-  { key: "listChecks", nav: "tasks", label: "Tasks" },
-  { key: "usersThree", nav: "people", label: "People" },
-];
 
 const store = createStore({
   view: "standby",
   conversationId: null,
-  transcript: [],           // { role, text, shape, cards, streaming }
+  transcript: [],
   busy: false,
   autoSpeak: "voice",
   voiceOk: false,
@@ -42,8 +32,11 @@ const store = createStore({
 const api = Api("");
 let ws;
 let currentAudio = null;
+let drawer;
+let settings;
 
 function speak(audioB64) {
+  if (!audioB64 || store.get().autoSpeak === "never") return;
   stopAudio();
   const bytes = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
@@ -55,7 +48,14 @@ function stopAudio() {
   if (currentAudio) { currentAudio.pause(); currentAudio = null; }
 }
 
-const ctx = { store, api, get ws() { return ws; }, speak, stopAudio, goto: (v) => store.set({ view: v }) };
+const ctx = {
+  store, api,
+  get ws() { return ws; },
+  speak, stopAudio,
+  goto: (v) => store.set({ view: v }),
+  openSettings: () => settings && settings.open(),
+  toggleHistory: () => drawer && drawer.toggle(),
+};
 
 function handleTurn(frame) {
   const gc = (frame.cards || []).find((c) => c.type === "gallery");
@@ -64,69 +64,52 @@ function handleTurn(frame) {
 }
 ctx.handleTurn = handleTurn;
 
-function renderRail() {
-  const el = document.getElementById("railnav");
-  const active = store.get().view;
-  el.innerHTML = NAV.map((n) => {
-    const on = n.nav === active || (n.nav === "standby" && active === "talk")
-      || (n.nav === "files" && active === "gallery");
-    return `<button class="rail-btn${on ? " on" : ""}" data-nav="${n.nav}" title="${n.label}" aria-label="${n.label}">${icon(n.key, { size: 20 })}<span class="rail-label">${n.label}</span></button>`;
-  }).join("");
-  document.querySelector('.rail [data-nav="settings"]').innerHTML =
-    `${icon("gear", { size: 20 })}<span class="rail-label">Settings</span>`;
-}
-
-const railEl = document.getElementById("rail");
-function applyRailCollapsed(v) {
-  railEl.dataset.collapsed = v ? "true" : "false";
-  const t = document.getElementById("railtoggle");
-  if (t) {
-    t.innerHTML = icon(v ? "chevronRight" : "chevronLeft", { size: 16 });
-    t.title = v ? "Expand sidebar" : "Collapse sidebar";
-  }
-}
-let railCollapsed = false;
-try { railCollapsed = localStorage.getItem("io.rail.collapsed") === "1"; } catch { /* private mode */ }
-applyRailCollapsed(railCollapsed);
-document.getElementById("railtoggle").addEventListener("click", () => {
-  railCollapsed = !railCollapsed;
-  applyRailCollapsed(railCollapsed);
-  try { localStorage.setItem("io.rail.collapsed", railCollapsed ? "1" : "0"); } catch { /* ignore */ }
-});
-
 function route() {
-  renderRail();
-  const name = store.get().view;
-  const mount = VIEWS[name] || VIEWS.standby;
   const view = document.getElementById("view");
+  if (typeof view._cleanup === "function") {
+    try { view._cleanup(); } catch { /* ignore */ }
+  }
+  view._cleanup = null;
   view.innerHTML = "";
   stopAudio();
-  mount(view, ctx);
+  const name = store.get().view;
+  (VIEWS[name] || VIEWS.standby)(view, ctx);
+  document.getElementById("win").dataset.view = name;
 }
-
-let drawer;
-document.getElementById("rail").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-nav]");
-  if (!b) return;
-  const nav = b.dataset.nav;
-  if (nav === "conversation") { drawer.toggle(); return; }
-  drawer.close();
-  if (VIEWS[nav]) store.set({ view: nav });
-  else store.set({ view: "conversation" });   // stub destinations land on the transcript
-});
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") stopAudio();
-});
 
 let lastView = store.get().view;
 store.subscribe((s) => {
   if (s.view !== lastView) { lastView = s.view; route(); }
 });
 
+// --- pywebview window controls -------------------------------------------
+function wv() { return window.pywebview && window.pywebview.api; }
+document.getElementById("win-min").onclick = () => wv() && wv().minimize();
+document.getElementById("win-full").onclick = () => wv() && wv().toggle_fullscreen();
+document.getElementById("win-close").onclick = () => wv() ? wv().close() : window.close();
+
+document.getElementById("gear").innerHTML = icon("gear", { size: 18 });
+document.getElementById("gear").onclick = () => settings.toggle();
+document.getElementById("win-min").innerHTML = icon("minus", { size: 14 });
+document.getElementById("win-full").innerHTML = icon("cornersOut", { size: 13 });
+document.getElementById("win-close").innerHTML = icon("x", { size: 14 });
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    stopAudio();
+    if (!document.getElementById("settings").hidden) { settings.close(); return; }
+    if (store.get().view !== "standby") store.set({ view: "standby" });
+  }
+});
+
 window.addEventListener("DOMContentLoaded", async () => {
-  window.__ctx = ctx;   // for the DOM smoke test
+  window.__ctx = ctx;
   drawer = Drawer(document.getElementById("drawer"), ctx);
+  settings = Settings(
+    document.getElementById("settings"),
+    document.getElementById("settings-scrim"),
+    ctx,
+  );
   ws = api.connectWs((frame) => {
     if (frame.type === "_open") store.set({ connection: "connected" });
     else if (frame.type === "_close") store.set({ connection: "disconnected" });
@@ -134,7 +117,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   try {
     const vh = await api.voiceHealth();
-    store.set({ voiceOk: !!(vh.whisper && vh.piper), voiceReason: vh.reason || null });
+    // whisper is enough — the Piper voice self-downloads on the first spoken reply
+    store.set({ voiceOk: !!vh.whisper, voiceReason: vh.reason || null });
   } catch { /* keep voiceOk false */ }
   try {
     const convs = await api.conversations();

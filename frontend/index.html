@@ -8,21 +8,17 @@
   <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
-  <div class="win">
-    <div class="body">
-      <nav class="rail" id="rail">
-        <div class="rail-top">
-          <span class="rail-brand">IO</span>
-          <button class="rail-toggle" id="railtoggle" title="Collapse sidebar" aria-label="Collapse sidebar"></button>
-        </div>
-        <div class="rail-nav" id="railnav"></div>
-        <span class="grow"></span>
-        <button class="rail-btn" data-nav="settings" title="Settings" aria-label="Settings"></button>
-        <div class="rail-status mono" id="status"></div>
-      </nav>
-      <aside class="drawer" id="drawer" hidden></aside>
-      <main id="view"></main>
+  <div class="win" id="win">
+    <div class="winctl" id="winctl">
+      <button class="winctl-btn" id="win-min" title="Minimize" aria-label="Minimize"></button>
+      <button class="winctl-btn" id="win-full" title="Fullscreen" aria-label="Fullscreen"></button>
+      <button class="winctl-btn danger" id="win-close" title="Close" aria-label="Close"></button>
     </div>
+    <button class="gear" id="gear" title="Settings" aria-label="Settings"></button>
+    <main id="view"></main>
+    <aside class="drawer" id="drawer" hidden></aside>
+    <div class="settings-scrim" id="settings-scrim" hidden></div>
+    <aside class="settings" id="settings" hidden></aside>
   </div>
   <script type="module" src="./app.js"></script>
 </body>

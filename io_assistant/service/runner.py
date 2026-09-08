@@ -109,16 +109,39 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
                 return None
             return res[0] if isinstance(res, (list, tuple)) else res
 
+        def minimize(self):
+            try:
+                window.minimize()
+            except Exception:
+                pass
+
+        def close(self):
+            try:
+                window.destroy()
+            except Exception:
+                pass
+
+        def toggle_fullscreen(self):
+            try:
+                window.toggle_fullscreen()
+            except Exception:
+                pass
+
     geo = _load_geometry()
-    window = webview.create_window(
-        title, url,
+    kw = dict(
         width=geo.get("width", 1180), height=geo.get("height", 760),
         x=geo.get("x"), y=geo.get("y"),
         min_size=(960, 640),
         fullscreen=fullscreen and not geo,
+        frameless=True, easy_drag=True,
+        background_color="#0E0F17",
         text_select=True,
         js_api=_Api(),
     )
+    try:
+        window = webview.create_window(title, url, transparent=True, **kw)
+    except Exception:
+        window = webview.create_window(title, url, **kw)
 
     def _menu():  # pragma: no cover - GUI
         try:
@@ -132,10 +155,14 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
                 window.load_url(url)
 
             return [
-                Menu("File", [MenuAction("New Conversation", _new_conv)]),
+                Menu("File", [
+                    MenuAction("New Conversation", _new_conv),
+                    MenuAction("Quit", window.destroy),
+                ]),
                 Menu("View", [
                     MenuAction("Reload", lambda: window.load_url(url)),
                     MenuAction("Toggle Fullscreen", window.toggle_fullscreen),
+                    MenuAction("Minimize", window.minimize),
                 ]),
             ]
         except Exception:

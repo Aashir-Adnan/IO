@@ -4,18 +4,34 @@ import { renderMarkdown } from "../vendor/markdown.js";
 import { revealText } from "../typing.js";
 import { Composer } from "../components/composer.js";
 import { mountInspector, clearInspector } from "../components/inspector.js";
+import { icon } from "../vendor/icons.js";
 
 let session = { recalls: 0, writes: 0 };
 
 export async function mount(root, ctx) {
   root.innerHTML = `
     <section class="convo">
+      <div class="convo-bar">
+        <button class="convo-back" aria-label="Back">${icon("chevronLeft", { size: 16 })}</button>
+        <button class="convo-hist" aria-label="History">${icon("chatDots", { size: 16 })}</button>
+        <button class="convo-new" aria-label="New conversation">${icon("plus", { size: 16 })}</button>
+      </div>
       <div class="convo-main">
         <div class="thread" id="thread"></div>
         <div class="convo-composer"></div>
       </div>
       <aside class="inspector-slot" id="inspector"></aside>
     </section>`;
+
+  root.querySelector(".convo-back").onclick = () => ctx.goto("standby");
+  root.querySelector(".convo-hist").onclick = () => ctx.toggleHistory();
+  root.querySelector(".convo-new").onclick = async () => {
+    try {
+      const { conversation_id } = await ctx.api.newConversation();
+      ctx.store.set({ conversationId: conversation_id, transcript: [] });
+      ctx.goto("standby");
+    } catch { /* ignore */ }
+  };
 
   const thread = root.querySelector("#thread");
   const status = document.getElementById("status");

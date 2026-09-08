@@ -1,80 +1,109 @@
 import { Orb } from "../components/orb.js";
-import { Composer } from "../components/composer.js";
 import { icon } from "../vendor/icons.js";
 import { sendTurn } from "./conversation.js";
+import { WavRecorder } from "../vendor/recorder.js";
 
 function greet(clockIso) {
   const h = clockIso ? new Date(clockIso).getHours() : new Date().getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
+const pad = (n) => String(n).padStart(2, "0");
+const longDate = (d) => d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
 
-const fmtTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const fmtDate = (d) => d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-
-export async function mount(root, ctx) {
+export function mount(root, ctx) {
   const status = document.getElementById("status");
   if (status) status.textContent = "LOCAL · ENCRYPTED";
 
   root.innerHTML = `
     <section class="standby">
-      <div class="standby-clock">
-        <div class="standby-time"></div>
-        <div class="standby-date"></div>
+      <div class="standby-stage">
+        <div class="standby-orb"></div>
+        <div class="standby-clock">
+          <div class="clk-h"></div>
+          <div class="clk-m"></div>
+          <div class="clk-date"></div>
+        </div>
       </div>
-      <h1 class="standby-greet"></h1>
-      <div class="standby-orb"></div>
-      <div class="standby-dock">
-        <div class="standby-stats"></div>
+      <div class="standby-foot">
+        <div class="standby-greet"></div>
         <div class="chips"></div>
-        <div class="standby-composer"></div>
+        <form class="askbar">
+          <button type="button" class="askbar-mic" aria-label="Voice">${icon("mic", { size: 17 })}</button>
+          <input type="text" class="askbar-in" placeholder="Ask IO anything" autocomplete="off" />
+          <button type="submit" class="askbar-send" aria-label="Send">${icon("arrowUp", { size: 17 })}</button>
+        </form>
       </div>
     </section>`;
 
-  const orb = Orb(root.querySelector(".standby-orb"), { mode: "standby", size: 300 });
+  const orb = Orb(root.querySelector(".standby-orb"), { mode: "standby", size: 460 });
 
-  const timeEl = root.querySelector(".standby-time");
-  const dateEl = root.querySelector(".standby-date");
+  const hEl = root.querySelector(".clk-h");
+  const mEl = root.querySelector(".clk-m");
+  const dEl = root.querySelector(".clk-date");
   const tick = () => {
     const now = new Date();
-    timeEl.textContent = fmtTime(now);
-    dateEl.textContent = fmtDate(now);
+    hEl.textContent = pad(now.getHours());
+    mEl.textContent = pad(now.getMinutes());
+    dEl.textContent = longDate(now);
   };
   tick();
-  const timer = setInterval(tick, 15000);
+  const timer = setInterval(tick, 10000);
 
-  let data = { greeting_name: "there", stats: {}, chips: [] };
-  try { data = await ctx.api.standby(); } catch { /* offline */ }
-
-  root.querySelector(".standby-greet").textContent =
-    `${greet(data.stats.clock)}, ${data.greeting_name}.`;
-
-  const s = data.stats || {};
-  root.querySelector(".standby-stats").innerHTML = [
-    `<span><b>${s.memories ?? 0}</b> MEMORIES</span>`,
-    `<span><b>${s.recall_ms ?? 0}</b> MS RECALL</span>`,
-  ].join("");
-
-  const chips = root.querySelector(".chips");
-  chips.innerHTML = (data.chips || []).map((c) =>
-    `<button class="chip" type="button">${icon(c.icon === "list-checks" ? "listChecks" : c.icon === "users-three" ? "usersThree" : "circle", { size: 12 })}<span>${c.text}</span></button>`
-  ).join("");
-  chips.addEventListener("click", (e) => {
-    const b = e.target.closest(".chip");
-    if (!b) return;
+  const input = root.querySelector(".askbar-in");
+  const submit = (text) => {
+    const v = (text ?? input.value).trim();
+    if (!v) return;
+    input.value = "";
     ctx.goto("conversation");
-    sendTurn(ctx, b.textContent.trim());
+    sendTurn(ctx, v);
+  };
+  root.querySelector(".askbar").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
+
+  // voice input — record, transcribe, send
+  let rec = null;
+  const micBtn = root.querySelector(".askbar-mic");
+  micBtn.addEventListener("click", async () => {
+    if (rec) {
+      micBtn.classList.remove("rec");
+      const blob = await rec.stop(); rec = null;
+      try {
+        const { transcript } = await ctx.api.transcribeAudio(blob);
+        if (transcript && transcript.trim()) submit(transcript);
+      } catch { /* ignore */ }
+      return;
+    }
+    if (!ctx.store.get().voiceOk) { ctx.openSettings(); return; }
+    try { rec = new WavRecorder(); await rec.start(); micBtn.classList.add("rec"); }
+    catch { rec = null; }
   });
 
-  Composer(root.querySelector(".standby-composer"), {
-    onSend: (text) => { ctx.goto("conversation"); sendTurn(ctx, text); },
-    onMic: () => ctx.store.get().voiceOk ? ctx.goto("talk") : null,
-  }).focus();
+  let data = { greeting_name: "there", stats: {}, chips: [] };
+  ctx.api.standby().then((d) => {
+    data = d;
+    root.querySelector(".standby-greet").textContent =
+      `${greet(data.stats && data.stats.clock)}, ${data.greeting_name}.`;
+    const chips = root.querySelector(".chips");
+    chips.innerHTML = (data.chips || []).map((c) =>
+      `<button class="chip" type="button">${icon(c.icon === "list-checks" ? "listChecks" : c.icon === "users-three" ? "usersThree" : "circle", { size: 12 })}<span>${c.text}</span></button>`
+    ).join("");
+    chips.onclick = (e) => {
+      const b = e.target.closest(".chip");
+      if (b) submit(b.textContent.trim());
+    };
+  }).catch(() => { /* offline */ });
 
   const onKey = (e) => {
     if (e.code === "Space" && e.altKey && ctx.store.get().voiceOk) {
-      e.preventDefault(); ctx.goto("talk");
+      e.preventDefault(); micBtn.click();
     }
   };
   document.addEventListener("keydown", onKey);
-  root._cleanup = () => { clearInterval(timer); document.removeEventListener("keydown", onKey); orb.destroy(); };
+  setTimeout(() => input.focus(), 30);
+
+  root._cleanup = () => {
+    clearInterval(timer);
+    document.removeEventListener("keydown", onKey);
+    if (rec) { try { rec.stop(); } catch { /* ignore */ } }
+    orb.destroy();
+  };
 }
