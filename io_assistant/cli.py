@@ -78,26 +78,34 @@ def run() -> None:
     import httpx
 
     from io_assistant.service.runner import open_window, run_service
+    from io_assistant.service.singleton import (
+        acquire_single_instance, surface_running_instance)
 
     config = load_config()
-    base = f"http://{config.service.host}:{config.service.port}"
-    url = f"{base}/app/"
+    inst = acquire_single_instance()
+    if inst is None:
+        surface_running_instance(config)
+        raise SystemExit(0)
 
-    try:
-        already = bool(httpx.get(f"{base}/health", timeout=1).json().get("ok"))
-    except Exception:
-        already = False
+    with inst:
+        base = f"http://{config.service.host}:{config.service.port}"
+        url = f"{base}/app/"
 
-    fs = config.ui.fullscreen
-    if already:
-        open_window(url, fullscreen=fs)
-        return
+        try:
+            already = bool(httpx.get(f"{base}/health", timeout=1).json().get("ok"))
+        except Exception:
+            already = False
 
-    server, _thread = run_service(config, block=False)
-    try:
-        open_window(url, fullscreen=fs)
-    finally:
-        server.should_exit = True
+        fs = config.ui.fullscreen
+        if already:
+            open_window(url, fullscreen=fs)
+            return
+
+        server, _thread = run_service(config, block=False)
+        try:
+            open_window(url, fullscreen=fs)
+        finally:
+            server.should_exit = True
 
 
 @app.command()
