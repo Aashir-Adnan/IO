@@ -379,6 +379,37 @@ instructed to:
   is intended for deliberate hands-free sessions, not all-day listening.
 - All paths converge at the Orchestrator as the common `Utterance` object.
 
+### 6.1 Spoken output (added 2026-09-08)
+
+IO speaks its answers. This is mandatory in voice sessions and available
+everywhere else.
+
+- **Engine:** [Piper](https://github.com/rhasspy/piper) — a fast, fully local
+  neural TTS. Voice model files are vendored/downloaded once into a local voices
+  directory; no network at speak time. Default voice is a US-English **female**
+  voice (`en_US-amy-medium` or equivalent); configurable in `config.toml`.
+- **Where it runs:** the voice client (`io listen` / push-to-talk) always speaks
+  the answer. The desktop app speaks when `[voice].speak_in_app = true`. The
+  plain CLI (`io repl`) speaks when `--speak` is passed.
+- **What is spoken:** the answer text only. Markdown is flattened to plain prose
+  before synthesis (strip `#`, `*`, backticks, list markers; a fenced `mermaid`
+  block is replaced with "a diagram"). The confirmation-gate prompt is also
+  spoken.
+- **Boundary:** TTS is deterministic post-processing — it never calls the model
+  and never changes what was stored or retrieved. A missing voice model degrades
+  to text-only with a one-line warning; it is not fatal.
+- **`io doctor`** checks the Piper binary/package and that the configured voice
+  model file exists.
+
+Config:
+
+```toml
+[voice]
+tts_voice   = "en_US-amy-medium"   # a local Piper voice (female by default)
+voices_dir  = "~/.local/share/io/piper"
+speak_in_app = false
+```
+
 ---
 
 ## 7. Desktop app (approach A, structured for growth)
