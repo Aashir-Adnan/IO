@@ -1,23 +1,30 @@
 # Current session
 
-Phase 1 complete (Plans 1-4). `.env` loading wired into cli + service
-(`io_assistant/_env.py`). Verified end-to-end against the real Anthropic
-subscription backend: STORE + QUERY via `io store` / `io repl` / `io serve`.
+Executing **Plan 5** (conversational backend) — see
+`docs/superpowers/plans/2026-09-08-io-phase-5-conversational-backend.md`.
+Spec: `docs/superpowers/specs/2026-09-08-io-phase-1.5-conversational-shell.md`.
+Visual system: **Nocturne** — `docs/design/` (adopted; blurple, Inter + Plex
+Mono, Phosphor, the orb). Plan 6 (`…-phase-6-nocturne-client.md`) after.
 
-Three live-run quality fixes landed 2026-09-08:
-- router prompt + expanded held-out fixture (21/21 on Haiku)
-- bare day words ("today"/"tomorrow"/"last Friday") snap to local noon
-- `scrub_roles()` drops bare role nouns ("dentist", "my boss") from people
+## Plan 5 progress (185 pass / 5 skipped)
 
-Full suite 174 pass / 5 opt-in skipped (all on `main`).
+- [x] Task 1 — 0003 conversations/messages + ConversationStore + context formatter
+- [x] Task 2 — Card domain types + build_fact_list()
+- [x] Task 3 — Backend context= on route/plan/phrase + acknowledge()
+- [x] Task 4 — Orchestrator threads history, acknowledges, returns cards
+- [ ] Task 5 — ConversationStore in the service + TurnResponse
+- [ ] Task 6 — POST /voice + /voice/health + lazy Whisper/Piper
+- [ ] Task 7 — natural Piper (speech_text + sentence-wise synth)
+- [ ] Task 8 — io listen -> POST /voice
+- [ ] Task 9 — GET /entity/{etype}/{id} + GET /standby
+- [ ] Task 10 — docs + state
 
-One command for the whole stack: **`.\dev.ps1 up`** / **`.\dev.ps1 down`**
-(also `status` / `logs` / `app` / `listen` / `doctor` / `test [args]`).
-Runtime state in `.io-dev/` (gitignored).
+Then Plan 6 (10 tasks): vendor fonts/icons/tokens, shell, orb, Standby /
+Listening / Conversation+Inspector views, typing, conversations drawer,
+fullscreen window.
 
-To run voice: `uv run python -m piper.download_voices en_US-amy-medium
---data-dir ~/.local/share/io/piper`, then `.\dev.ps1 up` + `.\dev.ps1 listen`.
-`io doctor` is green except Piper (voice model not downloaded).
+Backlog after 1.5: state 1d task runner (agent loop), external-source
+provenance, entity-file browser, /ws token streaming, Kokoro TTS adapter.
 
-Remaining work: backlog follow-ups only. Tests need `IO_TEST_DATABASE_URL`
-exported; DB is docker compose Postgres+pgvector :5432.
+Tests: `.\dev.ps1 test` (sets IO_TEST_DATABASE_URL). DB = docker compose :5432.
+Voice default: `en_US-hfc_female-medium` (Piper, tuned + sentence-wise).
