@@ -27,6 +27,12 @@ to a non-local host is a bug.
   you start something; move finished items from backlog.md to completed.md (dated,
   newest first) at the end of a session with meaningful work.
 
+## Running it
+
+`.\dev.ps1 up` starts everything (Docker Postgres + Ollama check + migrate + the
+`io` FastAPI service); `.\dev.ps1 down` stops it; `.\dev.ps1 test [args]` runs
+the suite against `io_test`. See `.claude/skills/run-local.md`.
+
 ## Conventions
 
 - Package: `io_assistant` (never `io` — stdlib clash). CLI command: `io`.

@@ -3,6 +3,31 @@
 Windows PowerShell 5.1 (no `pwsh`). Run from repo root. In a bash shell `uv` may
 need `export PATH="$HOME/.local/bin:$PATH"` first.
 
+## The one command: `dev.ps1`
+
+`dev.ps1` at the repo root is the single on/off switch — it manages Docker
+Postgres, checks/starts Ollama, migrates, and runs the `io` service.
+
+```
+.\dev.ps1 up          # Postgres + Ollama + migrate + io service (background)
+.\dev.ps1 up -Window  #  ... and open the desktop window
+.\dev.ps1 app         # open the UI (http://localhost:8765/app/) in a browser
+.\dev.ps1 listen      # voice mode
+.\dev.ps1 status      # what's running
+.\dev.ps1 logs        # tail the service log
+.\dev.ps1 test [...]  # run the suite against io_test (brings Postgres up first)
+.\dev.ps1 doctor      # io doctor
+.\dev.ps1 down        # stop the service + Postgres (data kept)
+.\dev.ps1 down -Wipe  # ... and delete the DB volume
+```
+
+Runtime state (service PID + logs) lives in `.io-dev/` (gitignored). Ollama is
+left running by `down` (it's a shared service). Credentials come from `.env`
+(`ANTHROPIC_AUTH_TOKEN` for the cloud backend; not needed for
+`[backend].provider = "local"`).
+
+The manual steps below are what `dev.ps1` automates.
+
 ## One-time setup
 
 `scripts/setup.ps1` does all of this

@@ -11,4 +11,7 @@ __pycache__/
 # Env / secrets
 .env
 
+# dev.ps1 runtime state (service pid + logs)
+/.io-dev/
+
 # Docker volumes handled by compose; nothing to ignore here
