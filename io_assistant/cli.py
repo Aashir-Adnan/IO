@@ -65,9 +65,15 @@ def repl() -> None:
 @app.command()
 def serve() -> None:
     """Run the local FastAPI service (no window)."""
+    from io_assistant.service.bootstrap import BootstrapError, ensure_database
     from io_assistant.service.runner import run_service
 
     config = load_config()
+    try:
+        ensure_database(config)
+    except BootstrapError as e:
+        print(e.message)
+        raise typer.Exit(1)
     print(f"io service on http://{config.service.host}:{config.service.port}")
     run_service(config, block=True)
 
@@ -86,6 +92,15 @@ def run() -> None:
     if inst is None:
         surface_running_instance(config)
         raise SystemExit(0)
+
+    from io_assistant.service.bootstrap import BootstrapError, ensure_database
+    try:
+        ensure_database(config)
+    except BootstrapError as e:
+        from io_assistant.service.runner import error_dialog
+
+        error_dialog(e.message)
+        raise SystemExit(1)
 
     with inst:
         base = f"http://{config.service.host}:{config.service.port}"
