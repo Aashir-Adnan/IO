@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 from fastapi.staticfiles import StaticFiles
 
@@ -15,11 +16,15 @@ from io_assistant.conversation.store import ConversationStore
 from io_assistant.db.base import make_engine, make_session_factory
 from io_assistant.orchestrator import Orchestrator, PendingStore
 from io_assistant.service.schemas import (
+    CaptionConfirmIn,
+    CaptionIn,
+    CaptionOut,
     ConversationOut,
     ConversationSummary,
     FileContentOut,
     FileForgetIn,
     FileForgetOut,
+    FileOpenIn,
     FileRegisterIn,
     FileRegisterOut,
     FileReindexIn,
@@ -275,6 +280,131 @@ def create_app(
             if doc.status != "ok":
                 raise HTTPException(status_code=404, detail=doc.status)
             return FileContentOut(path=str(p), title=doc.title, text=doc.text[:20000])
+
+        # --- media (Phase 2C) ------------------------------------------
+        import datetime as _dt
+
+        from io_assistant.files.caption import PendingCaption, apply_caption
+        from io_assistant.files.command import resolve_folder
+        from io_assistant.files.gallery import open_folder as _open_folder
+        from io_assistant.files.thumbs import make_thumb
+
+        app.state.caption_pending: dict[str, PendingCaption] = {}
+
+        def _assert_allowed(p):
+            with factory() as s:
+                gate.assert_allowed(
+                    p, registered_keys=file_index.authorized_keys(s))
+
+        @app.get("/files/raw")
+        def files_raw(path: str):
+            p = gate.resolve(path)
+            try:
+                _assert_allowed(p)
+            except AccessDenied as e:
+                raise HTTPException(status_code=400, detail=e.reason)
+            if not p.is_file():
+                raise HTTPException(status_code=404, detail="not found")
+            return FileResponse(str(p))
+
+        @app.get("/files/thumb")
+        def files_thumb(path: str):
+            p = gate.resolve(path)
+            try:
+                _assert_allowed(p)
+            except AccessDenied as e:
+                raise HTTPException(status_code=400, detail=e.reason)
+            with factory() as s:
+                node = file_index.get(s, gate.key(p))
+            tp = node.thumb_path if node else None
+            if tp and Path(tp).is_file():
+                return FileResponse(tp, media_type="image/webp")
+            import os as _os
+            made = make_thumb(
+                p, "image",
+                Path(_os.path.expanduser(config.files.thumbs_dir)),
+                path_key=gate.key(p))
+            if made is None:
+                raise HTTPException(status_code=404, detail="no thumbnail")
+            return FileResponse(str(made), media_type="image/webp")
+
+        @app.post("/files/open")
+        def files_open(body: FileOpenIn):
+            with factory() as s:
+                if body.path:
+                    target = gate.resolve(body.path)
+                else:
+                    res = resolve_folder(body.phrase or "", s, gate, config.files)
+                    if res.kind == "many":
+                        raise HTTPException(status_code=409, detail={
+                            "candidates": [pp.name for pp in res.candidates]})
+                    if res.kind == "none":
+                        raise HTTPException(status_code=404,
+                                            detail="folder not found")
+                    target = res.path
+                try:
+                    card = _open_folder(s, target, gate=gate, indexer=indexer,
+                                        index=file_index, config=config.files)
+                    s.commit()
+                except AccessDenied as e:
+                    raise HTTPException(status_code=400, detail=e.reason)
+            return card.model_dump(mode="json")
+
+        def _caption_out(res, token=None) -> CaptionOut:
+            return CaptionOut(
+                caption=res.caption,
+                entities=[e.model_dump() for e in res.entities],
+                gated=res.gated, reasons=res.gate_reasons, pending_token=token)
+
+        @app.post("/files/caption", response_model=CaptionOut)
+        def files_caption(body: CaptionIn):
+            with factory() as s:
+                try:
+                    res = apply_caption(
+                        s, gate.resolve(body.path), body.text, body.source,
+                        gate=gate, index=file_index,
+                        backend=orchestrator._backend,
+                        embedder=orchestrator._embedder,
+                        resolver_cfg=config.resolver,
+                        now=_dt.datetime.now(_dt.timezone.utc))
+                except AccessDenied as e:
+                    raise HTTPException(status_code=400, detail=e.reason)
+                if res.gated:
+                    tok = secrets.token_urlsafe(8)
+                    app.state.caption_pending[tok] = res.pending
+                    return _caption_out(res, tok)
+                s.commit()
+            return _caption_out(res)
+
+        @app.post("/files/caption/confirm", response_model=CaptionOut)
+        def files_caption_confirm(body: CaptionConfirmIn):
+            pending = app.state.caption_pending.pop(body.pending_token, None)
+            if pending is None:
+                raise HTTPException(status_code=404, detail="unknown token")
+            with factory() as s:
+                res = apply_caption(
+                    s, Path(pending.path), pending.text, pending.source,
+                    gate=gate, index=file_index, backend=orchestrator._backend,
+                    embedder=orchestrator._embedder,
+                    resolver_cfg=config.resolver,
+                    now=_dt.datetime.now(_dt.timezone.utc),
+                    confirmed=True, extraction=pending.extraction)
+                s.commit()
+            return _caption_out(res)
+
+        @app.post("/files/transcribe")
+        def files_transcribe(audio: UploadFile):
+            try:
+                transcriber = app.state.voice.transcriber()
+            except VoiceUnavailable as e:
+                raise HTTPException(status_code=503, detail=e.reason)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp.write(audio.file.read())
+                tmp_name = tmp.name
+            tr = transcriber.transcribe(tmp_name)
+            if not tr.text.strip():
+                raise HTTPException(status_code=422, detail="no speech")
+            return {"transcript": tr.text, "confidence": tr.confidence}
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):

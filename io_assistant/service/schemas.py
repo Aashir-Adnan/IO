@@ -23,6 +23,10 @@ __all__ = [
     "FileReindexIn",
     "FileReindexOut",
     "FileContentOut",
+    "FileOpenIn",
+    "CaptionIn",
+    "CaptionConfirmIn",
+    "CaptionOut",
 ]
 
 
@@ -133,3 +137,26 @@ class FileContentOut(BaseModel):
     path: str
     title: str | None = None
     text: str
+
+
+class FileOpenIn(BaseModel):
+    path: str | None = None
+    phrase: str | None = None
+
+
+class CaptionIn(BaseModel):
+    path: str
+    text: str
+    source: str = "text"
+
+
+class CaptionConfirmIn(BaseModel):
+    pending_token: str
+
+
+class CaptionOut(BaseModel):
+    caption: str
+    entities: list[dict] = Field(default_factory=list)
+    gated: bool = False
+    reasons: list[str] = Field(default_factory=list)
+    pending_token: str | None = None
