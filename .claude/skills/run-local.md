@@ -10,7 +10,8 @@ Postgres, checks/starts Ollama, migrates, and runs the `io` service.
 
 ```
 .\dev.ps1 up          # Postgres + Ollama + migrate + io service (background)
-.\dev.ps1 up -Window  #  ... and open the desktop window
+.\dev.ps1 up -Window  #  ... open the desktop window; closing it shuts the stack down
+.\dev.ps1 install     # put a Desktop "IO" shortcut = double-click to launch, close window to stop
 .\dev.ps1 app         # open the UI (http://localhost:8765/app/) in a browser
 .\dev.ps1 listen      # voice mode
 .\dev.ps1 status      # what's running
