@@ -6,8 +6,11 @@ import time
 import httpx
 import uvicorn
 
+from io_assistant._env import load_env_once
 from io_assistant.config import Config
 from io_assistant.service.app import create_app
+
+load_env_once()
 
 __all__ = ["run_service", "open_window"]
 

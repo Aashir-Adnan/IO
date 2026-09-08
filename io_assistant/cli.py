@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import typer
 
+from io_assistant._env import load_env_once
 from io_assistant.config import load_config
+
+load_env_once()  # pick up repo-root .env before any command reads os.environ
 from io_assistant.db.base import make_engine, make_session_factory
 from io_assistant.orchestrator import Orchestrator, PendingStore
 
