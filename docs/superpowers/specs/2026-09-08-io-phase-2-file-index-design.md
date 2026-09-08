@@ -293,10 +293,10 @@ into the next, hard-split any single paragraph longer than the window, stop at
    `references=[]`.
 6. Deterministic post-processing:
    - `summary` clipped to 400 chars; embed locally → `file_nodes.embedding`.
-   - each `entities[i].name` → `EntityResolver.lookup(etype_or_scan, name)`;
-     on a hit, upsert a `file_entity_link` (`source="summary"`, bump `mentions`).
-     No creation. If `etype` is null, try person → place → item → occasion in
-     order and take the first hit.
+   - the `names` list → `resolve_query_entities(resolver, session, names)` (the
+     existing read-only helper: tries person/place/item via `EntityResolver.
+     lookup` and occasion by exact name) → for every resolved id, upsert a
+     `file_entity_link` (`source="summary"`, bump `mentions`). No creation.
    - each `references[i]` string → look for a `file_nodes` row whose `path_key`
      ends with the normalised string or whose basename equals it; on a match,
      upsert a `references` edge (`detail=<string>`).
@@ -388,7 +388,7 @@ each `allowlist_root`. `ResolveResult` is `one(path)`, `many(list[Path])`, or
 def summarize_file(self, title: str, head_text: str, *,
                    mime: str | None = None) -> dict: ...
     # -> {"summary": str,
-    #     "entities": [{"etype": "person|place|item|occasion|null", "name": str}],
+    #     "names": [str],               # proper nouns; resolved via resolve_query_entities
     #     "references": [str]}          # raises BackendParseError on bad JSON
 
 def answer_from_files(self, question: str, files: list[dict], shape: str,
