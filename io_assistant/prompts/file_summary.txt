@@ -1,0 +1,16 @@
+Summarise ONE file for a personal search index. Output ONE JSON object, nothing else:
+
+{{"summary": "<=3 sentences, plain, what this file is and contains>",
+ "names": ["proper names of people, organisations, or places named in the file"],
+ "references": ["names or paths of OTHER files this file points to, verbatim"]}}
+
+Rules: summary <= 400 characters. names: only real proper nouns, no dates, no
+common words. references: only if the text actually cites another file. If a
+list is empty, use []. Do not invent.
+
+Title: {title}
+MIME: {mime}
+--- file text (may be truncated) ---
+{head}
+--- end ---
+JSON:

@@ -30,3 +30,11 @@ class HybridBackend:
 
     def acknowledge(self, facts: str, *, context: str | None = None) -> str:
         return self._cloud.acknowledge(facts, context=context)
+
+    def summarize_file(self, title: str, head_text: str, *,
+                       mime: str | None = None) -> dict:
+        return self._local.summarize_file(title, head_text, mime=mime)
+
+    def answer_from_files(self, question: str, files: list[dict], shape: str,
+                          *, context: str | None = None) -> str:
+        return self._cloud.answer_from_files(question, files, shape, context=context)

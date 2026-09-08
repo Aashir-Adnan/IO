@@ -1,0 +1,12 @@
+Answer the user's question using ONLY the file material below. Cite the file
+path(s) you used, in parentheses. If the material does not contain the answer,
+say so plainly and do not guess. Match the requested shape ({shape}: text or
+markdown).
+
+{context}Question:
+{question}
+
+Files:
+{files}
+
+Answer:

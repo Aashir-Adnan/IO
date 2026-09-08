@@ -142,3 +142,43 @@ class LocalBackend:
             ),
             json_mode=False,
         ).strip()
+
+    def summarize_file(self, title: str, head_text: str, *,
+                       mime: str | None = None) -> dict:
+        out = self._chat(
+            "You summarise a file into one JSON object. Output JSON only.",
+            _load_prompt("file_summary.txt").format(
+                title=title or "(untitled)", mime=mime or "unknown",
+                head=head_text[:6000],
+            ),
+            json_mode=True,
+        )
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise BackendParseError(str(e)) from e
+        if not isinstance(data, dict):
+            raise BackendParseError(f"summary is not an object: {out!r}")
+        return {
+            "summary": str(data.get("summary") or "")[:400],
+            "names": [str(x) for x in (data.get("names") or []) if str(x).strip()],
+            "references": [str(x) for x in (data.get("references") or []) if str(x).strip()],
+        }
+
+    def answer_from_files(self, question: str, files: list[dict], shape: str,
+                          *, context: str | None = None) -> str:
+        blocks = []
+        for f in files:
+            ex = "\n".join(f"  - {e}" for e in f.get("excerpts", []))
+            blocks.append(
+                f"[{f.get('path')}] {f.get('title') or ''}\n"
+                f"  summary: {f.get('summary') or ''}\n{ex}"
+            )
+        return self._chat(
+            "You answer strictly from the provided files.",
+            _load_prompt("file_answer.txt").format(
+                context=render_context(context), question=question,
+                files="\n\n".join(blocks), shape=shape,
+            ),
+            json_mode=False,
+        ).strip()

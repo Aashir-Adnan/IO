@@ -43,3 +43,17 @@ class Backend(Protocol):
         `facts` is a plain-text list built from the written rows — the model
         only restates it, never adds or decides."""
         ...
+
+    def summarize_file(self, title: str, head_text: str, *,
+                       mime: str | None = None) -> dict:
+        """One-time file summary for the index. Returns
+        {"summary": str, "names": [str], "references": [str]}. Every part is
+        deterministically validated before use (names → resolve_query_entities,
+        references → path match). Raises BackendParseError on bad JSON."""
+        ...
+
+    def answer_from_files(self, question: str, files: list[dict], shape: str,
+                          *, context: str | None = None) -> str:
+        """Phrase an answer strictly from the supplied file material.
+        `files` entries: {"path","title","summary","excerpts": [str]}."""
+        ...

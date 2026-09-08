@@ -14,7 +14,7 @@ class AnthropicBackendError(Exception):
     pass
 
 
-_INTENTS = {"STORE": "store", "QUERY": "query", "UNKNOWN": "unknown"}
+_INTENTS = {"STORE": "store", "QUERY": "query", "FILE": "file", "UNKNOWN": "unknown"}
 
 
 def _make_client():
@@ -153,4 +153,47 @@ class AnthropicBackend:
                 context=render_context(context), facts=facts
             ),
             max_tokens=120,
+        )
+
+    def summarize_file(self, title: str, head_text: str, *,
+                       mime: str | None = None) -> dict:
+        out = self._complete(
+            "You summarise a file into one JSON object. Output JSON only.",
+            _prompt("file_summary.txt").format(
+                title=title or "(untitled)", mime=mime or "unknown",
+                head=head_text[:6000],
+            ),
+            max_tokens=300,
+        )
+        out = out.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        if "{" in out and "}" in out:
+            out = out[out.index("{"): out.rindex("}") + 1]
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise BackendParseError(str(e)) from e
+        if not isinstance(data, dict):
+            raise BackendParseError(f"summary is not an object: {out!r}")
+        return {
+            "summary": str(data.get("summary") or "")[:400],
+            "names": [str(x) for x in (data.get("names") or []) if str(x).strip()],
+            "references": [str(x) for x in (data.get("references") or []) if str(x).strip()],
+        }
+
+    def answer_from_files(self, question: str, files: list[dict], shape: str,
+                          *, context: str | None = None) -> str:
+        blocks = []
+        for f in files:
+            ex = "\n".join(f"  - {e}" for e in f.get("excerpts", []))
+            blocks.append(
+                f"[{f.get('path')}] {f.get('title') or ''}\n"
+                f"  summary: {f.get('summary') or ''}\n{ex}"
+            )
+        return self._complete(
+            "You answer strictly from the provided files.",
+            _prompt("file_answer.txt").format(
+                context=render_context(context), question=question,
+                files="\n\n".join(blocks), shape=shape,
+            ),
+            max_tokens=500,
         )

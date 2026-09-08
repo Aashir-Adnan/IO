@@ -103,6 +103,10 @@ class FakeBackend:
         self._plan: dict = {}
         self._answer = ""
         self._ack = ""
+        self._file_summary = {"summary": "", "names": [], "references": []}
+        self._file_answer = ""
+        self.last_files = None
+        self.last_summarize = None
         self.calls: list[str] = []
         self.last_context: str | None = None
 
@@ -148,6 +152,23 @@ class FakeBackend:
         self._ctx(context)
         self.calls.append("acknowledge")
         return self._ack
+
+    def set_file_summary(self, d):
+        self._file_summary = d
+
+    def set_file_answer(self, s):
+        self._file_answer = s
+
+    def summarize_file(self, title, head_text, *, mime=None):
+        self.calls.append("summarize_file")
+        self.last_summarize = (title, head_text)
+        return self._file_summary
+
+    def answer_from_files(self, question, files, shape, *, context=None):
+        self._ctx(context)
+        self.calls.append("answer_from_files")
+        self.last_files = files
+        return self._file_answer
 
 
 @pytest.fixture
