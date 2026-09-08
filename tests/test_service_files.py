@@ -1,9 +1,18 @@
 import pytest
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from tests.conftest import requires_db, StubEmbedder
 from io_assistant.service.app import create_app
 from io_assistant.config import FilesConfig
+
+
+def _wipe_files(engine):
+    with engine.begin() as conn:
+        conn.execute(text(
+            "TRUNCATE file_entity_links, file_edges, file_chunks, file_nodes "
+            "RESTART IDENTITY CASCADE"
+        ))
 
 
 @pytest.fixture
@@ -17,9 +26,11 @@ def client_files(config, engine, tmp_path, fake_backend):
     if iq is not None:
         iq._indexer._backend = fake_backend
         iq._indexer._embed = StubEmbedder()
+    _wipe_files(engine)
     with TestClient(app) as c:
         c.tmp = tmp_path
         yield c
+    _wipe_files(engine)
 
 
 @requires_db

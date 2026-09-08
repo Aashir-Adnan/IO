@@ -34,6 +34,16 @@ occasions, records); b-tree on every foreign key and every timestamp
 `occasions.date`) plus b-tree on `records.kind` and `records.domain`; GIN on the
 `aliases` arrays.
 
+**File index (migration 0004)** — `file_nodes` (one row per file/dir; `path_key`
+dedup, `content_hash`/`index_hash` staleness gate, `summary`+`embedding`,
+`status`), `file_chunks` (chunked text + `embedding` + generated `tsv` FTS),
+`file_edges` (`contains` dir→child, `references` doc→doc), `file_entity_links`
+(polymorphic `etype`/`entity_id` into people/places/items/occasions; written
+only on a resolver hit). Not life-memory — a separate subsystem
+(`io_assistant/files/`, `.claude/knowledge/file-index.md`).
+
+**`utterances.resolved_intent`** takes `store` | `query` | `file` | `unknown`.
+
 **Migrations** — Alembic only, from the first commit. No ad-hoc `ALTER`. The
 embedding dimension is fixed in config; changing it or the embedding model is a
 migration plus a full backfill.

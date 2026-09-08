@@ -1,5 +1,28 @@
 # Completed (newest first)
 
+## 2026-09-08 — Phase 2A: file index & text exploration
+Branch `io-phase-2a-file-index` (not yet merged). Spec
+`…-io-phase-2-file-index-design.md`, plan `…-io-phase-2a-file-index.md` (15
+tasks). Migration `0004`: `file_nodes` (path_key dedup, content/index-hash
+staleness gate, summary+embedding), `file_chunks` (text + embedding + generated
+`tsv` FTS), `file_edges` (`contains`/`references`; shares-entity derived),
+`file_entity_links` (polymorphic, link-on-resolve only). `io_assistant/files/`:
+`AccessGate` (deny-by-default read authority), `walk_dir`, `read_document`
+(pypdf/python-docx), `chunk_text`, `FileIndex`, `FileIndexer` (hash-gated —
+re-index of unchanged content is a no-op), `classify_file_command` +
+`resolve_register_target`, `FileSearcher` (FTS + pgvector + entity + one-hop
+graph → rank → lazy re-index → phrase), `IndexQueue`. New coarse `file` router
+intent (deterministic register/search split). `Backend.summarize_file` +
+`answer_from_files` on all 3 backends + FakeBackend. Orchestrator `_file_turn` /
+`_file_register`. Service `/files`, `/files/reindex`, `/files/status`,
+`/files/content` (404 when disabled). `io files add/list/reindex/forget/search/
+status`. Frontend Files rail view + `files` card + in-app text viewer.
+LLM-boundary intact (discovery/rank/freshness/identity all deterministic).
+Cloud boundary: file text → Anthropic when provider≠local (embeddings always
+local); `io files add` prints the notice. Full suite 267 pass / 9 skip; socket
+guard green. Deferred to Spec C: media gallery / thumbnails / video / captions.
+
+
 ## 2026-09-08 — Plan 6: Nocturne desktop client
 `docs/superpowers/plans/2026-09-08-io-phase-6-nocturne-client.md`, 10 tasks.
 Spec: `…-phase-1.5-conversational-shell.md` §2/§7. `frontend/` rebuilt in the

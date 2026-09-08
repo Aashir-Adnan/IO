@@ -94,6 +94,24 @@ Skips cleanly when `IO_UI_TESTS` is unset or playwright/chromium are absent.
 Pure-JS frontend tests (markdown/typing/recorder) run in the normal suite via
 `node` when it's on PATH.
 
+## Files (Phase 2A)
+
+Opt-in. In `config.toml`:
+```
+[files]
+enabled = true
+allowlist_roots = ["~/Documents", "~/Downloads"]
+```
+Then:
+```
+uv run io files add "C:\Users\me\Documents\Taxes"   # register + index
+uv run io files search what does my lease say about pets
+uv run io files list ; uv run io files status
+```
+Or by voice/text through the assistant: *"remember my Taxes folder"*,
+*"what does my lease say about pets"*. **Note:** when `[backend].provider` is
+not `local`, file text is sent to `api.anthropic.com` (embeddings stay local).
+
 ## Go / no-go
 
 ```

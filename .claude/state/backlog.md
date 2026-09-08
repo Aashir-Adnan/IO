@@ -1,11 +1,12 @@
 # Backlog (highest priority on top)
 
 - **Phase 2 — Files & Media** (specs written 2026-09-08):
-  - Spec A `docs/superpowers/specs/2026-09-08-io-phase-2-file-index-design.md`
-    — file index + text exploration. `file_nodes`/`file_chunks`/`file_edges`/
-    `file_entity_links` (mig 0004), `io_assistant/files/`, `file` router intent,
-    `summarize_file`/`answer_from_files`, `FilesCard`, `/files*` routes, `io
-    files` CLI, Files rail view. **Building now.**
+  - ~~Spec A — file index + text exploration~~ — DONE 2026-09-08 on branch
+    `io-phase-2a-file-index` (267 pass). Not merged. See completed.md.
+    Follow-ups (spec §13): agentic exploration loop; `query`↔`file`
+    cross-fallback in one turn; filesystem watching vs lazy hash checks;
+    learned co-retrieval edges; OCR for scanned PDFs; opt-in `-m ollama`
+    `file`-class router accuracy re-baseline.
   - Spec C `…-io-phase-2-media-library-design.md` — gallery view, thumbnails,
     in-app image/video viewer, per-item captioning → entity links (mig 0005,
     `file_captions`). Depends on A.

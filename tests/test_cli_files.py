@@ -1,10 +1,26 @@
 import pytest
+from sqlalchemy import text
 from typer.testing import CliRunner
 
 from tests.conftest import requires_db
 from io_assistant.cli import app
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _wipe_file_tables(engine):
+    """`io files` commits through its own engine (no rolled-back transaction),
+    so clean the file tables around every test here."""
+    def wipe():
+        with engine.begin() as conn:
+            conn.execute(text(
+                "TRUNCATE file_entity_links, file_edges, file_chunks, file_nodes "
+                "RESTART IDENTITY CASCADE"
+            ))
+    wipe()
+    yield
+    wipe()
 
 
 @requires_db
