@@ -131,5 +131,136 @@ def doctor() -> None:
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
+files_app = typer.Typer(help="register and search local files")
+app.add_typer(files_app, name="files")
+
+
+def _files_ctx():
+    config = load_config()
+    if not config.files.enabled:
+        typer.echo("Files are disabled. Set [files].enabled = true in config.toml.")
+        raise typer.Exit(1)
+    engine = make_engine(config.database_url)
+    factory = make_session_factory(engine)
+    from io_assistant.backend.factory import build_backend
+    from io_assistant.backend.embed import Embedder
+    from io_assistant.files.paths import AccessGate
+    from io_assistant.files.store import FileIndex
+    from io_assistant.files.index import FileIndexer
+
+    backend = build_backend(config)
+    embedder = Embedder(config)
+    return (
+        config, engine, factory, AccessGate(config.files),
+        FileIndex(factory),
+        FileIndexer(embedder, backend, config.files, config.resolver),
+        backend, embedder,
+    )
+
+
+@files_app.command("add")
+def files_add(path: str, no_index: bool = typer.Option(False, "--no-index")):
+    """Register a file or folder and index it."""
+    config, engine, factory, gate, index, indexer, backend, embedder = _files_ctx()
+    if config.backend.provider != "local":
+        typer.echo("Note: file text will be sent to api.anthropic.com "
+                   "(backend.provider is not 'local').")
+    from pathlib import Path
+    try:
+        with factory() as s:
+            target = gate.resolve(path)
+            res = index.register(s, target, gate, config.files)
+            s.commit()
+            typer.echo(f"registered {target} — {res.discovered} file(s)")
+            if not no_index:
+                for node in index.stale(s):
+                    indexer.index_path(s, Path(node.path), gate=gate)
+                s.commit()
+                typer.echo("indexed.")
+    finally:
+        engine.dispose()
+
+
+@files_app.command("list")
+def files_list():
+    """List registered roots."""
+    config, engine, factory, gate, index, *_ = _files_ctx()
+    try:
+        with factory() as s:
+            for r in index.roots(s):
+                typer.echo(f"{r.kind:4} {r.path}")
+    finally:
+        engine.dispose()
+
+
+@files_app.command("reindex")
+def files_reindex(
+    path: str = typer.Argument(None),
+    all_stale: bool = typer.Option(False, "--all-stale"),
+):
+    """Re-index stale files."""
+    config, engine, factory, gate, index, indexer, *_ = _files_ctx()
+    from pathlib import Path
+    try:
+        with factory() as s:
+            for node in index.stale(s):
+                indexer.index_path(s, Path(node.path), gate=gate, force=bool(path))
+            s.commit()
+        typer.echo("reindexed stale files.")
+    finally:
+        engine.dispose()
+
+
+@files_app.command("forget")
+def files_forget(path: str):
+    """Unregister a path from the index (files on disk are untouched)."""
+    config, engine, factory, gate, index, *_ = _files_ctx()
+    typer.confirm(f"Unregister {path} from the index?", abort=True)
+    try:
+        with factory() as s:
+            n = index.forget(s, gate.key(gate.resolve(path)))
+            s.commit()
+        typer.echo(f"forgot {n} node(s).")
+    finally:
+        engine.dispose()
+
+
+@files_app.command("search")
+def files_search(query: list[str]):
+    """Search indexed files and print the answer."""
+    import datetime as dt
+
+    config, engine, factory, gate, index, indexer, backend, embedder = _files_ctx()
+    from io_assistant.files.search import FileSearcher
+
+    q = " ".join(query)
+    try:
+        with factory() as s:
+            ans = FileSearcher(
+                embedder, backend, config.files, config.resolver
+            ).search(s, q, dt.datetime.now(dt.timezone.utc), gate=gate)
+            s.commit()
+        typer.echo(ans.text)
+        for h in ans.hits:
+            typer.echo(f"  - {h.path}  ({h.why})")
+    finally:
+        engine.dispose()
+
+
+@files_app.command("status")
+def files_status():
+    """Show index counts."""
+    config, engine, factory, gate, index, *_ = _files_ctx()
+    try:
+        with factory() as s:
+            d = index.status_summary(s)
+        typer.echo(
+            f"{d['indexed']}/{d['total']} indexed, {d['stale']} stale, "
+            f"{d['errors']} errors"
+        )
+    finally:
+        engine.dispose()
+
+
 if __name__ == "__main__":
     app()
