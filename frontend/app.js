@@ -1,46 +1,106 @@
-import { mount as chat } from "./views/chat.js";
-import { mount as timeline } from "./views/timeline.js";
-import { mount as sources } from "./views/sources.js";
-import { mount as review } from "./views/review.js";
+import { createStore } from "./state.js";
+import { Api } from "./api.js";
+import { icon } from "./vendor/icons.js";
+import { mount as mountStandby } from "./views/standby.js";
+import { mount as mountListening } from "./views/listening.js";
+import { mount as mountConversation } from "./views/conversation.js";
 
-const VIEWS = { chat, timeline, sources, review };
-const store = { transcript: [], _onChange: null, pendingToken: null };
-const touch = () => store._onChange && store._onChange();
+const VIEWS = {
+  standby: mountStandby,
+  talk: mountListening,
+  conversation: mountConversation,
+};
 
-let ws = null;
-function connect() {
-  const conn = document.getElementById("conn");
-  ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => (conn.textContent = "connected");
-  ws.onclose = () => { conn.textContent = "disconnected"; setTimeout(connect, 1500); };
-  ws.onerror = () => (conn.textContent = "error");
-  ws.onmessage = (ev) => {
-    const m = JSON.parse(ev.data);
-    if (m.type === "error") {
-      store.transcript.push({ role: "io", text: "⚠ " + m.message, shape: "text" });
-    } else {
-      store.transcript.push({ role: "io", text: m.message, shape: "text" });
-      store.pendingToken = m.pending_token || null;
-    }
-    touch();
-  };
+const NAV = [
+  { key: "waveform", nav: "standby", label: "Talk" },
+  { key: "chatDots", nav: "conversation", label: "Conversation" },
+  { key: "brain", nav: "memory", label: "Memory" },
+  { key: "listChecks", nav: "tasks", label: "Tasks" },
+  { key: "usersThree", nav: "people", label: "People" },
+];
+
+const store = createStore({
+  view: "standby",
+  conversationId: null,
+  transcript: [],           // { role, text, shape, cards, streaming }
+  busy: false,
+  autoSpeak: "voice",
+  voiceOk: false,
+  voiceReason: null,
+  connection: "connecting",
+  typingCps: 45,
+  minThinkMs: 600,
+});
+
+const api = Api("");
+let ws;
+let currentAudio = null;
+
+function speak(audioB64) {
+  stopAudio();
+  const bytes = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+  currentAudio = new Audio(url);
+  currentAudio.play().catch(() => {});
+  currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; };
+}
+function stopAudio() {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
 }
 
-function send(text) {
-  store.transcript.push({ role: "user", text, shape: "text" });
-  touch();
-  const frame = { text, source: "text" };
-  if (store.pendingToken && /^(y|yes)$/i.test(text)) frame.confirm_token = store.pendingToken;
-  ws.send(JSON.stringify(frame));
+const ctx = { store, api, get ws() { return ws; }, speak, stopAudio, goto: (v) => store.set({ view: v }) };
+
+function renderRail() {
+  const el = document.getElementById("railnav");
+  const active = store.get().view;
+  el.innerHTML = NAV.map((n) =>
+    `<button class="rail-btn${(n.nav === active || (n.nav === "standby" && active === "talk")) ? " on" : ""}" data-nav="${n.nav}" title="${n.label}" aria-label="${n.label}">${icon(n.key, { size: 19 })}</button>`
+  ).join("");
+  document.querySelector('.rail [data-nav="settings"]').innerHTML = icon("gear", { size: 19 });
 }
 
 function route() {
-  const name = location.hash.replace(/^#\//, "") || "chat";
-  const view = VIEWS[name] || chat;
-  for (const a of document.querySelectorAll("#nav a"))
-    a.classList.toggle("active", a.getAttribute("href") === `#/${name}`);
-  view(document.getElementById("view"), store, send);
+  renderRail();
+  const name = store.get().view;
+  const mount = VIEWS[name] || VIEWS.standby;
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  stopAudio();
+  mount(view, ctx);
 }
 
-window.addEventListener("hashchange", route);
-window.addEventListener("DOMContentLoaded", () => { connect(); route(); });
+document.getElementById("rail").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-nav]");
+  if (!b) return;
+  const nav = b.dataset.nav;
+  if (VIEWS[nav]) store.set({ view: nav });
+  else store.set({ view: "conversation" });   // stub destinations land on the transcript
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") stopAudio();
+});
+
+let lastView = null;
+store.subscribe((s) => {
+  const conn = document.getElementById("status");
+  if (s.view !== lastView) { lastView = s.view; route(); }
+});
+
+window.addEventListener("DOMContentLoaded", async () => {
+  window.__ctx = ctx;   // for the DOM smoke test
+  ws = api.connectWs((frame) => {
+    if (frame.type === "_open") store.set({ connection: "connected" });
+    else if (frame.type === "_close") store.set({ connection: "disconnected" });
+    else if (frame.type === "answer") ctx.onTurn && ctx.onTurn(frame);
+  });
+  try {
+    const vh = await api.voiceHealth();
+    store.set({ voiceOk: !!(vh.whisper && vh.piper), voiceReason: vh.reason || null });
+  } catch { /* keep voiceOk false */ }
+  try {
+    const convs = await api.conversations();
+    if (convs[0]) store.set({ conversationId: convs[0].id });
+  } catch { /* fresh */ }
+  route();
+});

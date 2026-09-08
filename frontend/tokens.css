@@ -1,0 +1,81 @@
+/* Nocturne tokens (from docs/design/nocturne/styles.css) + IO app additions.
+   Local-first: fonts are vendored woff2, no @import, no CDN. */
+
+@font-face {
+  font-family: "Inter"; font-weight: 300; font-style: normal; font-display: swap;
+  src: url("./vendor/fonts/Inter-300.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("./vendor/fonts/Inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter"; font-weight: 500; font-style: normal; font-display: swap;
+  src: url("./vendor/fonts/Inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("./vendor/fonts/IBMPlexMono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-weight: 500; font-style: normal; font-display: swap;
+  src: url("./vendor/fonts/IBMPlexMono-500.woff2") format("woff2");
+}
+
+:root {
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-text: #e9e9ed;
+  --color-accent: #9184d9;
+  --color-accent-2: #a7a1db;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
+
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
+
+  --font-heading: "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --space-1: 2.8px;
+  --space-2: 5.6px;
+  --space-3: 8.4px;
+  --space-4: 11.2px;
+  --space-6: 16.8px;
+  --space-8: 22.4px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+
+  /* --- IO app additions --- */
+  --color-page: #0f111c;
+  --color-panel: #1b1d2b;
+  --color-panel-2: #1d1e30;
+  --color-hair: #292b31;
+  --color-hair-2: #33364a;
+  --glow: 0 0 10px 2px rgba(145, 132, 217, 0.7);
+  --orb-core: radial-gradient(circle at 38% 34%, #d2cefd, #796cbf 58%, #423a6a);
+  --orb-halo: radial-gradient(circle, rgba(145, 132, 217, 0.35), transparent 70%);
+}

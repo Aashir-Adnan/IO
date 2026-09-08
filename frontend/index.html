@@ -3,19 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>io</title>
-  <link rel="stylesheet" href="./styles/app.css" />
+  <title>IO</title>
+  <link rel="stylesheet" href="./tokens.css" />
+  <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
-  <nav id="nav">
-    <span class="brand">io</span>
-    <a href="#/chat">Chat</a>
-    <a href="#/timeline">Timeline</a>
-    <a href="#/sources">Sources</a>
-    <a href="#/review">Review</a>
-    <span id="conn" class="conn">connecting&hellip;</span>
-  </nav>
-  <main id="view"></main>
+  <div class="win">
+    <header class="titlebar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="mono ver">IO 1.4</span>
+      <span class="grow"></span>
+      <span id="status" class="mono">LOCAL &middot; ENCRYPTED</span>
+    </header>
+    <div class="body">
+      <nav class="rail" id="rail">
+        <div class="rail-orb"><span></span></div>
+        <div class="rail-nav" id="railnav"></div>
+        <span class="grow"></span>
+        <button class="rail-btn" data-nav="settings" title="Settings" aria-label="Settings"></button>
+      </nav>
+      <main id="view"></main>
+    </div>
+  </div>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
