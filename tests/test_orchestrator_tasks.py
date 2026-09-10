@@ -147,6 +147,42 @@ def test_unclear_reply_re_gates_without_closing_anything(config, db, fake_backen
     assert _get(db, a).status == "open" and _get(db, b).status == "open"
 
 
+@requires_db
+def test_stale_gate_never_recloses_an_already_closed_task(config, db, fake_backend):
+    a = _open_task(db, "call the dentist")
+    b = _open_task(db, "book the dentist follow-up")
+    o = _orch(config, db, fake_backend)
+    gate = o.handle("mark the dentist thing done", captured_at=NOW)
+    assert gate.pending.candidate_ids == [a, b]
+
+    closed = _get(db, a)          # closed out of band, after the gate went out
+    closed.status = "dropped"
+    db.flush()
+
+    res = o.handle("the first one", captured_at=NOW, pending=gate.pending)
+
+    a_row, b_row = _get(db, a), _get(db, b)
+    assert a_row.status == "dropped" and a_row.completed_at is None
+    assert b_row.status == "open"
+    assert res.intent_kind == "gate" and res.pending.candidate_ids == [b]
+
+
+@requires_db
+def test_gate_reply_acks_when_every_candidate_is_gone(config, db, fake_backend):
+    a = _open_task(db, "call the dentist")
+    b = _open_task(db, "book the dentist follow-up")
+    o = _orch(config, db, fake_backend)
+    gate = o.handle("mark the dentist thing done", captured_at=NOW)
+
+    for rid in (a, b):
+        _get(db, rid).status = "done"
+    db.flush()
+
+    res = o.handle("the first one", captured_at=NOW, pending=gate.pending)
+    assert res.intent_kind == "ack" and res.pending is None
+    assert _get(db, a).completed_at is None   # untouched, not re-stamped
+
+
 # --- Task 6: the complete_record capability --------------------------------
 
 @requires_db

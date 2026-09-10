@@ -48,8 +48,10 @@ _WEB_DELTA = re.compile(
 # --- task-completion routing pre-check (regex, no model) ---------------------
 # "I finished X" / "mark X done" / "cancel X" are *state changes* on a task the
 # user already told IO about, not new notes. These only decide that a turn is a
-# completion; tasks/complete.py picks the row (deterministic, no model) and the
-# `complete_record` capability catches the phrasings these deliberately miss.
+# completion; tasks/complete.py picks the row (deterministic, no model). The
+# phrasings these deliberately miss are caught by the `complete_record`
+# capability in *combined* decide mode; split mode (the default on a local
+# light profile) has no action steps yet, so there they fall through to store.
 _DONE_VERB = (r"finished|completed|did|done with|wrapped up|took care of|"
               r"knocked out|sorted out|handled|dealt with")
 _MARK_VERB = r"mark(?:ed)?|set|check(?:ed)?|tick(?:ed)?|cross(?:ed)?|scratch(?:ed)?"
@@ -571,7 +573,8 @@ class Orchestrator:
         from io_assistant.tasks.complete import close_record, set_record_status
 
         target = self._complete_precheck(text) or "done"
-        match_on = (phrase or "").strip() or _completion_phrase(text)
+        match_on = (phrase.strip() if isinstance(phrase, str) else "") \
+            or _completion_phrase(text)
         session.add(m.Utterance(text=text, source=source, captured_at=captured_at,
                                 resolved_intent="store", marker="complete"))
         session.flush()
@@ -602,10 +605,22 @@ class Orchestrator:
         from io_assistant.tasks.complete import set_record_status
 
         rows = [r for r in (session.get(m.Record, i) for i in pending.candidate_ids)
-                if r is not None]
+                if r is not None and r.status == "open"]
         if not rows:
             return HandleResult("store", None, "I don't see an open task like that.",
                                 intent_kind="ack")
+        if len(rows) != len(pending.candidate_ids):
+            # Something closed since the gate went out, so the numbering the
+            # user is answering is stale — re-ask against what's still open
+            # rather than letting "the first one" land on the wrong row.
+            return HandleResult(
+                "store", None,
+                f"Some of those are already closed — which one do you mean?"
+                f"\n{_numbered(rows)}",
+                intent_kind="gate",
+                pending=PendingComplete(candidate_ids=[r.id for r in rows],
+                                        target_status=pending.target_status),
+            )
         pick = _pick_candidate(reply_text, rows)
         if pick is None:
             return HandleResult("store", None,
@@ -619,9 +634,11 @@ class Orchestrator:
 
     def _action_complete_record(self, session, args, *, text, source, captured_at,
                                 now, history=None, **_):
+        # No `what` (or an empty one) -> _try_complete derives the phrase from
+        # the utterance itself, same as the pre-check path.
         return self._try_complete(session, text, now, source=source,
                                   captured_at=captured_at,
-                                  phrase=(args.get("what") or "").strip() or text)
+                                  phrase=args.get("what"))
 
     # --- web-backed answers (Tiers A & C; see io_assistant/web/) -------------
     def _web_precheck(self, text: str) -> str | None:
