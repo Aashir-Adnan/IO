@@ -34,3 +34,34 @@ def test_dedupe_keeps_both():
 def test_top_n_caps():
     rows = [RetrievedRow(_row(i, str(i), i), "record", "structured", None) for i in range(50)]
     assert len(rank([rows], NOW, top_n=20)) == 20
+
+
+class _Rec:
+    def __init__(self, **kw):
+        base = dict(occurred_at=None, due_at=None, created_at=NOW,
+                    status=None, id=1)
+        base.update(kw)
+        self.__dict__.update(base)
+
+
+def test_overdue_open_task_outranks_a_fresh_note():
+    overdue = RetrievedRow(_Rec(id=1, status="open",
+        due_at=NOW - dt.timedelta(days=4)), "record", "structured", None)
+    fresh = RetrievedRow(_Rec(id=2, created_at=NOW), "record", "structured", None)
+    ranked = rank([[overdue, fresh]], NOW)
+    assert ranked[0].obj.id == 1
+    assert ranked[0].components.get("overdue", 0) > 0
+
+
+def test_not_yet_due_open_task_gets_no_overdue_bump():
+    soon = RetrievedRow(_Rec(id=3, status="open",
+        due_at=NOW + dt.timedelta(days=2)), "record", "structured", None)
+    ranked = rank([[soon]], NOW)
+    assert ranked[0].components["overdue"] == 0
+
+
+def test_done_overdue_task_gets_no_overdue_bump():
+    done = RetrievedRow(_Rec(id=4, status="done",
+        due_at=NOW - dt.timedelta(days=9)), "record", "structured", None)
+    ranked = rank([[done]], NOW)
+    assert ranked[0].components["overdue"] == 0

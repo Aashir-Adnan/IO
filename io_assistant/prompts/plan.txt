@@ -26,6 +26,10 @@ Rules:
   facts, not a person lookup: use target_type "record" with a semantic_hint
   like "family relationships", NOT target_type "person". target_type "person"
   is only for questions answerable from the person list alone.
+- "what do I need to do", "what's on my plate", "my tasks", "anything due",
+  "what's outstanding" -> target_type "record", status_filter ["open"], and
+  leave time_window null. Overdue items surface automatically. Only set a
+  time_window when the user names one ("due this week", "tasks for today").
 - entities: names exactly as the user wrote them, unresolved.
 - semantic_hint: only when wording matters beyond the filters; else null.
 - answer_shape: "markdown" for lists/tables, "diagram" only if a chart/timeline

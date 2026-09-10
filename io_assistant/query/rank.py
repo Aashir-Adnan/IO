@@ -76,11 +76,19 @@ def rank(
         similarity = (1.0 - r.distance) if r.distance is not None else 0.0
         structured_rel = 1.0 if r.provenance != "semantic" else 0.4
         prov_bonus = 0.15 if r.provenance == "both" else 0.0
+        # An open task past its due date is "overdue" — bump it so it surfaces
+        # ahead of fresher but less urgent rows.
+        overdue = 0.0
+        due = getattr(r.obj, "due_at", None)
+        if getattr(r.obj, "status", None) == "open" and due is not None:
+            if _as_dt(due, now) < now:
+                overdue = 0.2
         score = (
             0.30 * recency
             + 0.30 * similarity
             + 0.30 * structured_rel
             + prov_bonus
+            + overdue
         )
         out.append(
             RankedRow(
@@ -93,6 +101,7 @@ def rank(
                     "similarity": similarity,
                     "structured": structured_rel,
                     "provenance": prov_bonus,
+                    "overdue": overdue,
                 },
             )
         )
