@@ -291,7 +291,13 @@ def create_app(
             if body.domain is not None:
                 row.domain = body.domain.strip() or None
             if body.status is not None:
-                row.status = body.status or None
+                # A cleared status ("") means "open" for task-kinds; `set_record_status`
+                # is the one place completed_at is maintained (see tasks/complete.py).
+                import datetime as _dt
+
+                from io_assistant.tasks.complete import set_record_status
+                set_record_status(s, row, body.status or "open",
+                                  _dt.datetime.now(_dt.timezone.utc))
             if body.when_phrase is not None:
                 import datetime as _dt
                 from io_assistant.resolve.dates import ground

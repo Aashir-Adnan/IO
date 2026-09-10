@@ -18,6 +18,12 @@ bucket from a small open set: `social` `job` `home` `health` `finance`
 `learning` `errand` `other`), `title text`, `body text null`,
 `occurred_at timestamptz null`, `due_at timestamptz null`, `status text null`
 (`open` | `done` | `dropped`, or null for pure events/notes),
+`completed_at timestamptz null` (migration 0008 — stamped when `status` flips to
+`done`, cleared on `open`; maintained only through
+`io_assistant/tasks/complete.py::set_record_status`, which is the single
+write-path — the chat close flow and `PATCH /record/{id}` both call it. `PATCH
+/record` with `status: ""` (or any falsy value) is treated as re-open for
+task-kinds, i.e. `open` + `completed_at` cleared),
 `recurrence_rule text null` (iCal RRULE), `assigned_by_person_id fk null`,
 `attributes jsonb` (any other structured detail), `source_utterance_id fk`,
 `embedding vector`, `created_at`, `updated_at`.

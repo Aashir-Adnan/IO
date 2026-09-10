@@ -70,3 +70,24 @@ def test_records_browse_edit_delete(config, fake_backend, db, monkeypatch):
         assert c.delete(f"/record/{rid}").json() == {"deleted": rid}
         assert all(x["id"] != rid for x in c.get("/records").json())
         assert c.delete(f"/record/{rid}").status_code == 404
+
+
+@requires_db
+def test_patch_record_status_maintains_completed_at(config, fake_backend, db):
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    r = m.Record(kind="task", domain="home", title="mop the floor",
+                 status="open", attributes={}, source_utterance_id=u.id)
+    db.add(r); db.flush(); rid = r.id
+
+    app = create_app(config, orchestrator=Orchestrator(
+        config, session_factory=lambda: db, backend=fake_backend),
+        engine=db.get_bind(), conversations=ConversationStore(lambda: db))
+    with TestClient(app) as c:
+        done = c.patch(f"/record/{rid}", json={"status": "done"}).json()
+        assert done["status"] == "done"
+        db.expire_all()
+        assert db.get(m.Record, rid).completed_at is not None
+        c.patch(f"/record/{rid}", json={"status": "open"})
+        db.expire_all()
+        assert db.get(m.Record, rid).completed_at is None
