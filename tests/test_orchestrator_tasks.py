@@ -138,3 +138,28 @@ def test_unclear_reply_re_gates_without_closing_anything(config, db, fake_backen
     again = o.handle("hmm", captured_at=NOW, pending=gate.pending)
     assert again.intent_kind == "gate" and again.pending is not None
     assert _get(db, a).status == "open" and _get(db, b).status == "open"
+
+
+# --- Task 6: the complete_record capability --------------------------------
+
+@requires_db
+def test_decide_complete_record_action_closes_the_task(config, db, fake_backend):
+    # Text the pre-check deliberately leaves alone, so the decide/action path
+    # is what does the work here.
+    config.backend.decide = "combined"
+    rid = _open_task(db, "water the plants")
+    fake_backend.set_decide(Plan(steps=[
+        Step(kind="action", action="complete_record", args={"what": "the plants"})]))
+    res = _orch(config, db, fake_backend).handle("the plants are sorted", captured_at=NOW)
+    assert "decide" in fake_backend.calls
+    assert _get(db, rid).status == "done" and res.intent_kind == "ack"
+
+
+@requires_db
+def test_complete_record_action_falls_back_to_the_utterance_text(config, db, fake_backend):
+    config.backend.decide = "combined"
+    rid = _open_task(db, "water the plants")
+    fake_backend.set_decide(Plan(steps=[
+        Step(kind="action", action="complete_record", args={})]))
+    _orch(config, db, fake_backend).handle("the plants", captured_at=NOW)
+    assert _get(db, rid).status == "done"

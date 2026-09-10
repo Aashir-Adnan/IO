@@ -26,6 +26,15 @@ class Capability:
 
 
 REGISTRY: dict[str, Capability] = {
+    "complete_record": Capability(
+        slug="complete_record",
+        summary=("Mark an existing OPEN task or list item as done / dropped — "
+                 "'I finished the report', 'cross milk off the list', 'cancel "
+                 "the dentist reminder'. NOT for a task the user still needs to "
+                 "do (that is a store step)."),
+        args={"what": "string — the task or item being completed, as the user "
+                      "named it"},
+    ),
     "open_folder": Capability(
         slug="open_folder",
         summary="Open a folder the user names and show its contents as a grid.",

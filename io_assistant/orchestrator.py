@@ -446,6 +446,7 @@ class Orchestrator:
 
     def _action_handlers(self):
         h = {
+            "complete_record": self._action_complete_record,
             "open_folder": self._action_open_folder,
             "show_photos": self._action_show_photos,
             "search_files": self._action_search_files,
@@ -611,6 +612,12 @@ class Orchestrator:
         return HandleResult("store", None,
                             _closed_message(pending.target_status, pick),
                             intent_kind="ack", cards=[_status_card(pick)])
+
+    def _action_complete_record(self, session, args, *, text, source, captured_at,
+                                now, history=None, **_):
+        return self._try_complete(session, text, now, source=source,
+                                  captured_at=captured_at,
+                                  phrase=(args.get("what") or "").strip() or text)
 
     # --- web-backed answers (Tiers A & C; see io_assistant/web/) -------------
     def _web_precheck(self, text: str) -> str | None:
