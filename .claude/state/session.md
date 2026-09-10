@@ -397,8 +397,9 @@ one commit. **Build**: `.\dev.ps1 build` OK → `dist/IO/IO.exe` (24.8 MB).
 ## Tasks & Collections — spec written (2026-09-10, branch `io-window-glass`)
 
 Spec `docs/superpowers/specs/2026-09-10-tasks-and-collections-design.md`
-(commit `7f8300e`). Approved via brainstorming; **awaiting user review of the
-written spec before writing-plans.** Decisions:
+(commit `7f8300e`), approved. Plan
+`docs/superpowers/plans/2026-09-10-tasks-and-collections.md` (commit `479270f`) —
+**26 TDD tasks, 5 phases, ready to execute.** Decisions:
 - Bare `task`/`chore` with no date → **due today, rolls forward** (read-time
   rule, no daily job); "someday/eventually" stays dateless.
 - Completion via **chat OR checkbox** → one deterministic `close_record` path
