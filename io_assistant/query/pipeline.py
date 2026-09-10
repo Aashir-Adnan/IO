@@ -106,7 +106,7 @@ class QueryPipeline:
 
         _emit("Writing the answer", f"{len(final)} row(s) matched")
         text = Responder(self._backend).run(
-            question, final, plan.answer_shape, context=context
+            question, final, plan.answer_shape, now=now, context=context
         )
         record_refs = _project(session, final)
         return QueryAnswer(

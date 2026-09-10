@@ -30,7 +30,28 @@ def _clip(s, n: int = 600) -> str:
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
-def rows_to_json(rows: list) -> list[dict]:
+def _due_label(due, now) -> str | None:
+    """A human phrase for a due date — computed here in Python so the phrasing
+    model never does date arithmetic."""
+    if due is None:
+        return None
+    days = (due.date() - now.date()).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    if days == -1:
+        return "yesterday"
+    if days < 0:
+        return f"{-days} days ago"
+    if days <= 6:
+        return due.strftime("%a")
+    return due.strftime("%a %d %b")
+
+
+def rows_to_json(rows: list, now: _dt.datetime | None = None) -> list[dict]:
+    if now is None:
+        now = _dt.datetime.now(_dt.timezone.utc)
     out: list[dict] = []
     for r in rows:
         obj = r.obj
@@ -66,6 +87,13 @@ def rows_to_json(rows: list) -> list[dict]:
         attributes = getattr(obj, "attributes", None)
         if isinstance(attributes, dict) and attributes:
             d["attributes"] = attributes
+        due = getattr(obj, "due_at", None)
+        d["overdue"] = bool(
+            getattr(obj, "status", None) == "open"
+            and due is not None
+            and due < now
+        )
+        d["due_label"] = _due_label(due, now)
         out.append(d)
     return out
 
@@ -75,10 +103,16 @@ class Responder:
         self._backend = backend
 
     def run(
-        self, question: str, rows: list, shape: str, *, context: str | None = None
+        self,
+        question: str,
+        rows: list,
+        shape: str,
+        *,
+        now: _dt.datetime | None = None,
+        context: str | None = None,
     ) -> str:
         if not rows:
             return _EMPTY
         return self._backend.phrase(
-            question, rows_to_json(rows), shape, context=context
+            question, rows_to_json(rows, now), shape, context=context
         )
