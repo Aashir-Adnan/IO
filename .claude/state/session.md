@@ -387,3 +387,31 @@ no date-ish token (`_DATEISH` = a digit or month name) before bailing.
 `test_service_standby.py::test_standby_panel` still `--deselect`ed (long-standing
 `io_test` chip-data pollution). The two `test_orchestrator_files.py` tests need
 Ollama running (they fail, not skip, without it).
+
+**Committed** `629db42` — the whole `io-window-glass` backlog since `346aa3c`
+(web answers, decide pipeline, media library, soniox, glass UI + the above) in
+one commit. **Build**: `.\dev.ps1 build` OK → `dist/IO/IO.exe` (24.8 MB).
+
+---
+
+## Tasks & Collections — spec written (2026-09-10, branch `io-window-glass`)
+
+Spec `docs/superpowers/specs/2026-09-10-tasks-and-collections-design.md`
+(commit `7f8300e`). Approved via brainstorming; **awaiting user review of the
+written spec before writing-plans.** Decisions:
+- Bare `task`/`chore` with no date → **due today, rolls forward** (read-time
+  rule, no daily job); "someday/eventually" stays dateless.
+- Completion via **chat OR checkbox** → one deterministic `close_record` path
+  (scoped retrieve + rank; confident → flip `status`, ambiguous → gate). Model
+  gives intent + phrase only.
+- **Learned `collections` registry** (migration 0009): model proposes
+  `{name,item_noun,synonyms,checkable}` on the first list item, Python upserts
+  by `kind_slug`; `describe_collections()` injected into `plan.txt`/extract so
+  ad-hoc lists ("movies to watch") stay findable.
+- 5 phases: (1) completion + interactive checkbox, (2) default-today +
+  roll-forward, (3) collections storage, (4) collections-aware routing +
+  `aggregation` count branch, (5) `CollectionCard` + records-browser filter +
+  optional `io list`.
+- New migrations: `0008_task_completion` (`records.completed_at`),
+  `0009_collections`. Deferred: per-instance recurring-chore completion, typed
+  collection fields, real nag/notifications, snooze.
