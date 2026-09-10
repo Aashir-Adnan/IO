@@ -12,7 +12,13 @@ from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
 
-__all__ = ["DateResult", "ground", "to_rrule"]
+__all__ = [
+    "DateResult",
+    "ground",
+    "to_rrule",
+    "start_of_day",
+    "is_someday_phrase",
+]
 
 
 @dataclass(frozen=True)
@@ -40,6 +46,27 @@ _WEEKDAYS = {
     "sunday": 6,
     "sun": 6,
 }
+
+# "no particular date" phrasing — a groundable answer of "no date", NOT an
+# ungroundable failure. A bare task with one of these stays dateless instead of
+# defaulting to due-today.
+_SOMEDAY = re.compile(
+    r"\b(some\s?day|eventually|some\s?point|no rush|no hurry|whenever|"
+    r"one day|at some point|down the line|in the future)\b",
+    re.IGNORECASE,
+)
+
+
+def is_someday_phrase(text: str | None) -> bool:
+    """True when a phrase expresses 'no particular date' ('someday',
+    'eventually', 'no rush') rather than a concrete groundable time."""
+    return bool(text and _SOMEDAY.search(text))
+
+
+def start_of_day(d: datetime) -> datetime:
+    """Local midnight of ``d`` — the default due moment for a bare task."""
+    return d.replace(hour=0, minute=0, second=0, microsecond=0)
+
 
 # a digit or a month name — enough to say a phrase carries a real date
 _DATEISH = re.compile(
@@ -114,6 +141,9 @@ def _next_weekday(now: datetime, target: int) -> datetime:
 
 def ground(phrase: str | None, now: datetime) -> DateResult:
     if phrase is None or not phrase.strip():
+        return DateResult(None, True)
+
+    if is_someday_phrase(phrase):
         return DateResult(None, True)
 
     text = _normalize(phrase)

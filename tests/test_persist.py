@@ -216,6 +216,64 @@ def test_record_item_link_persists(db, config):
     assert db.query(m.RecordItem).filter_by(record_id=rid).count() == 1
 
 
+def _persist_rec(db, config, rec):
+    return persist_store(
+        db, StubEmbedder(),
+        EntityResolver(db, StubEmbedder(), config.resolver),
+        utterance_text="x", source="text", captured_at=NOW,
+        extraction=ExtractionResult(records=[rec]), now=NOW,
+        confidence_gate=config.resolver.confidence_gate_threshold)
+
+
+@requires_db
+def test_bare_task_defaults_to_due_today(db, config):
+    from io_assistant.resolve.dates import start_of_day
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="task", title="call the dentist", confidence=0.9))
+    assert not out.gated
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.due_at == start_of_day(NOW)
+    assert rec.occurred_at is None
+    assert rec.status == "open"
+
+
+@requires_db
+def test_someday_task_stays_dateless(db, config):
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="task", title="learn the cello", when_phrase="someday",
+        confidence=0.9))
+    assert not out.gated
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.due_at is None
+
+
+@requires_db
+def test_non_task_kind_is_never_defaulted(db, config):
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="gym_session", title="leg day", confidence=0.9))
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.due_at is None and rec.occurred_at is None
+
+
+@requires_db
+def test_recurring_chore_is_not_defaulted_to_due_today(db, config):
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="chore", title="take out the trash",
+        recurrence_phrase="every Monday", confidence=0.9))
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.due_at is None
+    assert rec.recurrence_rule == "FREQ=WEEKLY;BYDAY=MO"
+
+
+@requires_db
+def test_task_with_explicit_due_phrase_keeps_it(db, config):
+    from io_assistant.resolve.dates import start_of_day
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="task", title="file taxes", due_phrase="tomorrow", confidence=0.9))
+    rec = db.get(m.Record, out.record_ids[0])
+    assert rec.due_at is not None and rec.due_at != start_of_day(NOW)
+
+
 @requires_db
 def test_unreadable_recurrence_gates(db, config):
     ext = ExtractionResult(records=[ExtractedRecord(
