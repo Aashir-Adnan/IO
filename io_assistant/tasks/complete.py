@@ -51,7 +51,7 @@ def close_record(
         select(m.Record).where(
             m.Record.status == "open",
             m.Record.kind.in_(sorted(checkable_kinds)),
-        )
+        ).order_by(m.Record.id)
     ).scalars().all()
     if not rows:
         return CloseOutcome("none")

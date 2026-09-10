@@ -17,7 +17,7 @@ from io_assistant.conversation.context import format_context
 from io_assistant.conversation.store import ConversationStore
 from io_assistant.db import models as m
 from io_assistant.db.base import make_engine, make_session_factory
-from io_assistant.orchestrator import Orchestrator, PendingStore
+from io_assistant.orchestrator import Orchestrator, PendingComplete, PendingStore
 from io_assistant.service.schemas import (
     CaptionConfirmIn,
     CaptionIn,
@@ -70,7 +70,7 @@ def create_app(
     app.state.orchestrator = orchestrator
     app.state.conversations = store
     app.state.voice = voice or VoiceModels(config)
-    app.state.pending: dict[str, PendingStore] = {}
+    app.state.pending: dict[str, PendingStore | PendingComplete] = {}
     app.state.recall_ms = 0
 
     def _run(body: UtteranceIn, on_progress=None) -> TurnResponse:
@@ -81,13 +81,16 @@ def create_app(
             pending = app.state.pending.pop(body.confirm_token, None)
 
         conv_id = body.conversation_id or store.ensure_active()
-        text_in = pending.text if pending is not None else body.text
+        # A gated store replays its own text; a gated completion needs the
+        # reply the user just typed ("the first one").
+        text_arg = body.text or getattr(pending, "text", "")
+        text_in = getattr(pending, "text", None) or body.text
         store.append(conv_id, "user", text_in, source=body.source)
         history = format_context(store.recent_turns(conv_id))
 
         t0 = time.perf_counter()
         if pending is not None:
-            result = orchestrator.handle(pending.text, pending=pending,
+            result = orchestrator.handle(text_arg, pending=pending,
                                          history=history, on_progress=on_progress)
         else:
             result = orchestrator.handle(

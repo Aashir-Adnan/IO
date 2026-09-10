@@ -18,7 +18,7 @@ from io_assistant.progress import emit as _emit
 from io_assistant.query.pipeline import QueryPipeline
 from io_assistant.resolve.resolver import EntityResolver
 
-__all__ = ["HandleResult", "Orchestrator", "PendingStore"]
+__all__ = ["HandleResult", "Orchestrator", "PendingComplete", "PendingStore"]
 
 # --- web-answers routing pre-check (regex, no model) -------------------------
 # A strong web signal AND no first-person reference (which would make it a
@@ -43,6 +43,117 @@ _WEB_DELTA = re.compile(
     r"\b(vs|versus|compared? (to|with)|change[ds]?|difference|since)\b"
     r"|\byesterday\b|\blast week\b|\bthis week\b|\bmove[ds]?\b", re.I,
 )
+
+
+# --- task-completion routing pre-check (regex, no model) ---------------------
+# "I finished X" / "mark X done" / "cancel X" are *state changes* on a task the
+# user already told IO about, not new notes. These only decide that a turn is a
+# completion; tasks/complete.py picks the row (deterministic, no model) and the
+# `complete_record` capability catches the phrasings these deliberately miss.
+_DONE_VERB = (r"finished|completed|did|done with|wrapped up|took care of|"
+              r"knocked out|sorted out|handled|dealt with")
+_MARK_VERB = r"mark(?:ed)?|set|check(?:ed)?|tick(?:ed)?|cross(?:ed)?|scratch(?:ed)?"
+_DROP_VERB = r"cancel(?:l?ed)?|drop(?:ped)?|scrap(?:ped)?|skip(?:ped)?|forget"
+_I_PREFIX = r"(?:i\s+(?:just\s+)?|i(?:'ve|\s+have)\s+(?:just\s+)?)?"
+
+_COMPLETE_DONE = re.compile(
+    rf"^\s*{_I_PREFIX}(?:{_DONE_VERB})\b"
+    rf"|^\s*(?:i\s+)?(?:{_MARK_VERB})\b.*\b(?:done|complete|completed|finished|off)\b"
+    r"|^\s*(?:that'?s|it'?s|this is|those are)\s+(?:all\s+)?"
+    r"(?:done|finished|handled|sorted|taken care of)\b",
+    re.I,
+)
+_COMPLETE_DROP = re.compile(
+    rf"^\s*(?:{_DROP_VERB})\s+(?:about\s+)?(?!it\b|that\s*$)"
+    r"(?:the|that|my|this|those|these)?\s*[\w'-]{2,}"
+    r"|^\s*never\s?mind\s+(?:the|that|my|about)\b"
+    r"|^\s*(?:i\s+)?(?:don'?t|do not)\s+need\s+to\b"
+    r"|^\s*(?:i'?m\s+)?not\s+doing\b",
+    re.I,
+)
+# A question about tasks ("did I finish X?", "what's still open?") is never a
+# completion — this wins over the two above.
+_COMPLETE_QUESTION = re.compile(
+    r"^\s*(?:did|have|has|is|are|was|were|do|does|can|could|will|would|should|"
+    r"when|what|why|how|which|who|where|any)\b"
+    r"|\?\s*$",
+    re.I,
+)
+# Reduce an utterance to the bit that names the task, so the lexical match in
+# close_record isn't skewed by the completion verb itself.
+_COMPLETE_STRIP = re.compile(
+    rf"^\s*{_I_PREFIX}(?:{_DONE_VERB}|{_MARK_VERB}|{_DROP_VERB})\s+"
+    r"(?:off\s+|about\s+)?",
+    re.I,
+)
+_COMPLETE_TAIL = re.compile(
+    r"[\s,]*\b(?:as\s+)?(?:done|complete|completed|finished|off)\b"
+    r"(?:\s+(?:the|my)\s+(?:list|to-?do(?:\s+list)?))?[\s.!]*$",
+    re.I,
+)
+# Beyond this, an utterance is prose that merely mentions finishing something;
+# leave it to the planner rather than eating a note.
+_COMPLETE_MAX_WORDS = 12
+
+_ORDINAL_WORDS = (
+    (r"first|1st|top", 1),
+    (r"second|2nd", 2),
+    (r"third|3rd", 3),
+)
+
+
+def _completion_phrase(text: str) -> str:
+    """The task-naming part of a completion utterance ('mark the dentist thing
+    done' -> 'the dentist thing'). Falls back to the raw text."""
+    phrase = _COMPLETE_STRIP.sub("", text or "")
+    phrase = _COMPLETE_TAIL.sub("", phrase).strip(" .!,").strip()
+    return phrase or (text or "").strip()
+
+
+def _pick_candidate(reply: str, rows: list):
+    """Which of the gated candidates the reply means — ordinal first, then a
+    lexical match on the titles. Pure Python; the model never picks."""
+    from rapidfuzz import fuzz
+
+    t = (reply or "").strip().lower()
+    if not t or not rows:
+        return None
+    for pattern, n in _ORDINAL_WORDS:
+        if re.search(rf"\b(?:{pattern})\b", t) and 1 <= n <= len(rows):
+            return rows[n - 1]
+    if re.search(r"\b(?:last|bottom)\b", t):
+        return rows[-1]
+    digit = re.search(r"\b([1-9])\b", t)
+    if digit and 1 <= int(digit.group(1)) <= len(rows):
+        return rows[int(digit.group(1)) - 1]
+    scored = sorted(((fuzz.WRatio(t, r.title), r) for r in rows),
+                    key=lambda x: x[0], reverse=True)
+    clear = len(scored) == 1 or scored[0][0] - scored[1][0] >= 5
+    if scored[0][0] >= 60 and clear:
+        return scored[0][1]
+    return None
+
+
+def session_now(session) -> datetime:
+    """Seam so a later test can freeze 'now' for a gated completion reply."""
+    return datetime.now(timezone.utc)
+
+
+def _status_card(record):
+    from io_assistant.models_domain import RecordCard
+
+    return RecordCard(record_id=record.id, kind=record.kind, domain=record.domain,
+                      title=record.title, when=record.occurred_at,
+                      due=record.due_at, status=record.status)
+
+
+def _closed_message(target: str, record) -> str:
+    verb = "Marked done" if target == "done" else "Dropped"
+    return f"{verb}: {record.title}."
+
+
+def _numbered(rows) -> str:
+    return "\n".join(f"{i + 1}. {r.title}" for i, r in enumerate(rows))
 
 
 def _phrase_reading(d: dict, *, want_delta: bool) -> str:
@@ -78,11 +189,19 @@ class PendingStore:
 
 
 @dataclass
+class PendingComplete:
+    """A completion that needs the user to pick which open task they mean."""
+
+    candidate_ids: list[int]
+    target_status: str   # "done" | "dropped"
+
+
+@dataclass
 class HandleResult:
     intent: Intent
     stored: PersistResult | None
     message: str
-    pending: PendingStore | None = None
+    pending: PendingStore | PendingComplete | None = None
     cards: list = field(default_factory=list)
     intent_kind: str = "unknown"   # answer | ack | gate | unknown | error
     shape: str = "text"
@@ -119,7 +238,7 @@ class Orchestrator:
         source: str = "text",
         captured_at: datetime | None = None,
         confirmed: bool = False,
-        pending: PendingStore | None = None,
+        pending: PendingStore | PendingComplete | None = None,
         history: str | None = None,
         on_progress=None,
     ) -> HandleResult:
@@ -160,9 +279,12 @@ class Orchestrator:
         source: str,
         captured_at: datetime | None,
         confirmed: bool,
-        pending: PendingStore | None,
+        pending: PendingStore | PendingComplete | None,
         history: str | None = None,
     ) -> HandleResult:
+        if isinstance(pending, PendingComplete):
+            # Reply to a "which one do you mean?" gate — no Route, no Extract.
+            return self._resolve_completion(session, pending, text)
         if pending is not None:
             # Replay of a gated store: no Route, no Extract, no new utterance.
             return self._store(
@@ -182,6 +304,12 @@ class Orchestrator:
         now = captured_at
 
         _emit("Understanding what you said")
+        if not confirmed and self._complete_precheck(text):
+            done = self._try_complete(session, text, now,
+                                      source=source, captured_at=captured_at)
+            if done is not None:
+                return done
+
         web_kind = self._web_precheck(text)
         if web_kind == "track" and not confirmed:
             return self._action_track(session, {"label": text}, text=text)
@@ -409,6 +537,80 @@ class Orchestrator:
             f"{pre}{card.count} item{'' if card.count == 1 else 's'}"
             + (f" of {', '.join(terms)}" if terms else ""),
             cards=[gallery_card(card)], intent_kind="gallery", shape="text")
+
+    # --- task completion (see io_assistant/tasks/complete.py) ----------------
+    def _complete_precheck(self, text: str) -> str | None:
+        """'done' | 'dropped' | None — deterministic, no model. Only says that
+        this turn changes an existing task's status; never which one."""
+        t = (text or "").strip()
+        if not t or len(t.split()) > _COMPLETE_MAX_WORDS:
+            return None
+        if _COMPLETE_QUESTION.search(t):
+            return None
+        if _COMPLETE_DONE.search(t):
+            return "done"
+        if _COMPLETE_DROP.search(t):
+            return "dropped"
+        return None
+
+    def _checkable_kinds(self, session) -> set[str]:
+        kinds = {"task", "chore"}
+        # Task 17 adds: kinds |= checkable_kinds(session)
+        return kinds
+
+    def _try_complete(self, session, text, now, *, source, captured_at,
+                      phrase: str | None = None) -> HandleResult:
+        """Close the open task `text` (or `phrase`, when the decide model named
+        it) refers to. Always returns a HandleResult — falling through to the
+        store path would file a duplicate of the task being closed."""
+        from io_assistant.tasks.complete import close_record, set_record_status
+
+        target = self._complete_precheck(text) or "done"
+        match_on = (phrase or "").strip() or _completion_phrase(text)
+        session.add(m.Utterance(text=text, source=source, captured_at=captured_at,
+                                resolved_intent="store", marker="complete"))
+        session.flush()
+        out = close_record(session, match_on, now,
+                           checkable_kinds=self._checkable_kinds(session),
+                           target_status=target)
+        if out.status == "matched":
+            set_record_status(session, out.record, target, now)
+            session.flush()
+            return HandleResult("store", None, _closed_message(target, out.record),
+                                intent_kind="ack", cards=[_status_card(out.record)])
+        if out.status == "ambiguous":
+            # id order, not score order, so the numbering is stable and reads
+            # oldest-first — "the first one" means the first one listed.
+            rows = sorted(out.candidates, key=lambda r: r.id)
+            return HandleResult(
+                "store", None,
+                f"Which one do you mean?\n{_numbered(rows)}",
+                intent_kind="gate",
+                pending=PendingComplete(candidate_ids=[r.id for r in rows],
+                                        target_status=target),
+            )
+        return HandleResult("store", None, "I don't see an open task like that.",
+                            intent_kind="ack")
+
+    def _resolve_completion(self, session, pending: PendingComplete,
+                            reply_text: str) -> HandleResult:
+        from io_assistant.tasks.complete import set_record_status
+
+        rows = [r for r in (session.get(m.Record, i) for i in pending.candidate_ids)
+                if r is not None]
+        if not rows:
+            return HandleResult("store", None, "I don't see an open task like that.",
+                                intent_kind="ack")
+        pick = _pick_candidate(reply_text, rows)
+        if pick is None:
+            return HandleResult("store", None,
+                                f"Still not sure — which one?\n{_numbered(rows)}",
+                                intent_kind="gate", pending=pending)
+        set_record_status(session, pick, pending.target_status, session_now(session))
+        session.flush()
+        return HandleResult("store", None,
+                            _closed_message(pending.target_status, pick),
+                            intent_kind="ack", cards=[_status_card(pick)])
 
     # --- web-backed answers (Tiers A & C; see io_assistant/web/) -------------
     def _web_precheck(self, text: str) -> str | None:
