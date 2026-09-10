@@ -35,6 +35,55 @@ def test_compile_filters_kind_and_window(db):
 
 
 @requires_db
+def test_overdue_open_task_is_in_a_today_window(db):
+    uid = _utt(db)
+    old = m.Record(kind="task", title="overdue thing", status="open",
+                   due_at=NOW - dt.timedelta(days=3), attributes={},
+                   source_utterance_id=uid)
+    db.add(old)
+    db.flush()
+    sq = SubQuery(target_type="record", status_filter=["open"],
+                  time_window=TimeWindow(start=NOW.replace(hour=0, minute=0),
+                                         end=NOW.replace(hour=23, minute=59)))
+    rows = db.execute(compile_structured(sq, EMPTY, NOW)).scalars().all()
+    assert old.id in {r.id for r in rows}
+
+
+@requires_db
+def test_last_week_query_does_not_pull_an_open_overdue_task(db):
+    uid = _utt(db)
+    t = m.Record(kind="task", title="pay rent", status="open",
+                 due_at=NOW - dt.timedelta(days=2), attributes={},
+                 source_utterance_id=uid)
+    e = m.Record(kind="event", title="museum",
+                 occurred_at=NOW - dt.timedelta(days=9), attributes={},
+                 source_utterance_id=uid)
+    db.add_all([t, e])
+    db.flush()
+    sq = SubQuery(target_type="record",
+                  time_window=TimeWindow(start=NOW - dt.timedelta(days=14),
+                                         end=NOW - dt.timedelta(days=7)))
+    rows = db.execute(compile_structured(sq, EMPTY, NOW)).scalars().all()
+    ids = {r.id for r in rows}
+    assert e.id in ids and t.id not in ids
+
+
+@requires_db
+def test_done_overdue_task_still_obeys_the_window(db):
+    uid = _utt(db)
+    d = m.Record(kind="task", title="done long ago", status="done",
+                 due_at=NOW - dt.timedelta(days=30), attributes={},
+                 source_utterance_id=uid)
+    db.add(d)
+    db.flush()
+    sq = SubQuery(target_type="record", status_filter=["open", "done"],
+                  time_window=TimeWindow(start=NOW.replace(hour=0, minute=0),
+                                         end=NOW.replace(hour=23, minute=59)))
+    rows = db.execute(compile_structured(sq, EMPTY, NOW)).scalars().all()
+    assert d.id not in {r.id for r in rows}
+
+
+@requires_db
 def test_compile_entity_link_exists(db):
     uid = _utt(db)
     p = m.Person(canonical_name="Nafay", aliases=[])

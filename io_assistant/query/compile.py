@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Select, and_, func, or_, select
 
 from io_assistant.db import models as m
 from io_assistant.query.plan import SubQuery
@@ -61,11 +61,35 @@ def compile_structured(
         if ids:
             conds.append(model.id.in_(ids))
 
+    # Read-time roll-forward: when a query explicitly asks for open records, an
+    # open task whose due date has passed is always in-window — an overdue task
+    # is still "due", so a "what's on my plate" / "anything due today" query must
+    # surface it regardless of the time window. done/dropped rows still obey it.
+    open_rollforward = (
+        sq.target_type == "record"
+        and sq.status_filter is not None
+        and "open" in sq.status_filter
+    )
+
     if sq.time_window is not None:
+        window = []
         if sq.time_window.start is not None:
-            conds.append(recency >= sq.time_window.start)
+            window.append(recency >= sq.time_window.start)
         if sq.time_window.end is not None:
-            conds.append(recency <= sq.time_window.end)
+            window.append(recency <= sq.time_window.end)
+        if window:
+            if open_rollforward:
+                conds.append(
+                    or_(
+                        and_(*window),
+                        and_(
+                            m.Record.status == "open",
+                            m.Record.due_at <= now,
+                        ),
+                    )
+                )
+            else:
+                conds.append(and_(*window))
 
     stmt = select(model)
     if conds:
