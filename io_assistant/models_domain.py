@@ -48,6 +48,16 @@ class ExtractedOccasion(BaseModel):
     confidence: float
 
 
+class ExtractedCollection(BaseModel):
+    """The model's *proposal* for an ad-hoc personal list this record belongs to
+    (movies to watch, books to read, gift ideas). Python owns identity — see
+    io_assistant/collections/registry.py."""
+    name: str
+    item_noun: str | None = None
+    synonyms: list[str] = Field(default_factory=list)
+    checkable: bool = False
+
+
 class ExtractedRecord(BaseModel):
     kind: str
     domain: str | None = None
@@ -63,6 +73,7 @@ class ExtractedRecord(BaseModel):
     items: list[str] = Field(default_factory=list)
     occasions: list[str] = Field(default_factory=list)
     attributes: dict = Field(default_factory=dict)
+    collection: ExtractedCollection | None = None
     confidence: float
 
 

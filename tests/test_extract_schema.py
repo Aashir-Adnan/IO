@@ -23,6 +23,16 @@ def test_fewshot_examples_parse_as_extraction_results():
         ExtractionResult.model_validate_json(block)
 
 
+def test_new_watchlist_example_parses():
+    from io_assistant.extract.schema import _EXAMPLES
+    from io_assistant.models_domain import ExtractionResult
+    outs = [ExtractionResult.model_validate(out) for _, out in _EXAMPLES]
+    assert any(
+        rec.collection is not None
+        for res in outs for rec in res.records
+    )
+
+
 def test_fixtures_file_wellformed():
     import pathlib
 
