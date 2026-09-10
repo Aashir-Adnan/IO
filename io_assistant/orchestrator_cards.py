@@ -57,9 +57,14 @@ def query_cards(session, answer) -> list[Card]:
             labels=["memory"],
         ))
     lr = getattr(answer, "list_records", [])
-    if lr and all(r.kind in ("task", "chore") or r.due is not None for r in lr):
+    # A LATER group adds a CollectionCard branch ahead of this one.
+    statusful = [
+        r for r in lr
+        if r.status in ("open", "done", "dropped") or r.due is not None
+    ]
+    if statusful and len(statusful) >= max(1, len(lr) // 2):
         cards.append(TaskListCard(items=[
             TaskListItem(record_id=r.record_id, title=r.title, status=r.status, due=r.due)
-            for r in lr
+            for r in statusful
         ]))
     return cards
