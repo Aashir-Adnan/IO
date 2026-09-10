@@ -8,7 +8,25 @@ class Backend(Protocol):
     def extract(self, utterance: str, now: datetime) -> ExtractionResult: ...
     def plan(self, question: str, now: datetime) -> QueryPlan: ...
     def phrase(self, question: str, rows: list[dict], shape: AnswerShape) -> str: ...
+    def decide(self, utterance, now, *, context, files_enabled) -> Plan: ...  # optional
 ```
+
+**`decide` — the unified planner** (`io_assistant/decide/`, spec
+`2026-09-09-unified-decide-pipeline-design.md`). One call that returns a
+`Plan` = ordered `Step`s (`store` w/ inline extraction | `query` | `file` |
+`action` slug | `unknown`), so a turn can be multi-intent
+("remind me X and what's on Friday" → a store step + a query step, merged into
+one reply by `Orchestrator._merge_results`; a gate on any step pauses the turn).
+`DecidePlanner` picks the mode from `[backend].decide` (`auto` default →
+**combined** on anthropic/hybrid + local `quality`, **split** — the tuned
+route+extract — on local `light`). Any parse/backend failure falls back to
+split, so a bad response never breaks a turn. `AnthropicBackend.decide` is
+implemented; `LocalBackend` has no `decide` (always split).
+`io_assistant/actions/registry.py` lists the `action` slugs
+(`open_folder`/`show_photos`/`search_files`) + their arg schemas; the
+orchestrator validates the slug/args before dispatching to a whitelisted
+handler. Grounding/persist/SQL stay deterministic — `decide` is route+extract+
+plan folded together, nothing more (LLM boundary intact).
 
 - **LocalBackend** — talks to Ollama. Default. Enforces the resource budget
   (on-demand load, short `keep_alive`, one model at a time, capped threads).

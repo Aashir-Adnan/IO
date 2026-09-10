@@ -30,8 +30,12 @@ to a non-local host is a bug.
 ## Running it
 
 `.\dev.ps1 up` starts everything (Docker Postgres + Ollama check + migrate + the
-`io` FastAPI service); `.\dev.ps1 down` stops it; `.\dev.ps1 test [args]` runs
-the suite against `io_test`. See `.claude/skills/run-local.md`.
+`io` FastAPI service) **and opens the desktop window** — closing the window
+shuts the stack down. `.\dev.ps1 serve` (or `up -NoWindow`) starts it headless
+for tests/background use; `.\dev.ps1 down` stops it; `.\dev.ps1 test [args]`
+runs the suite against `io_test`. IO is desktop-only — it never opens in a
+browser; a second launch just surfaces the running window. See
+`.claude/skills/run-local.md`.
 
 ## Conventions
 

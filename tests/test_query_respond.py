@@ -32,3 +32,29 @@ def test_rows_to_json_projects_record():
     )
     d = rows_to_json([row])[0]
     assert d["type"] == "record" and d["title"] == "pay rent" and d["status"] == "open"
+
+
+def test_rows_to_json_uses_person_canonical_name():
+    row = RankedRow(
+        types.SimpleNamespace(canonical_name="Mehnaz Afzal", notes="the user's mother",
+                              title=None, name=None, occurred_at=None, due_at=None,
+                              created_at=None, date=None),
+        "person", "structured", 0.5,
+    )
+    d = rows_to_json([row])[0]
+    assert d["title"] == "Mehnaz Afzal"
+    assert d["notes"] == "the user's mother"
+
+
+def test_rows_to_json_includes_record_body_and_attributes():
+    row = RankedRow(
+        types.SimpleNamespace(
+            title="Family relationships", kind="fact", domain="social", status=None,
+            body="Mother is Mehnaz Afzal, father is Adnan Afzal, sister is Zoha Adnan",
+            attributes={"relation": "family"},
+            occurred_at=None, due_at=None, created_at=None, name=None, date=None),
+        "record", "structured", 0.9,
+    )
+    d = rows_to_json([row])[0]
+    assert d["detail"].startswith("Mother is Mehnaz Afzal")
+    assert d["attributes"] == {"relation": "family"}

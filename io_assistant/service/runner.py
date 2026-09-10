@@ -15,7 +15,36 @@ from io_assistant.service.app import create_app
 
 load_env_once()
 
-__all__ = ["run_service", "open_window", "error_dialog"]
+__all__ = ["run_service", "open_window", "error_dialog", "raise_window"]
+
+# The live pywebview window in THIS process (None in a headless `io serve`).
+# Set by open_window; read by the /window/raise endpoint so a second launch
+# focuses the existing window instead of opening a browser.
+_WINDOW = None
+
+
+def raise_window() -> bool:
+    """Bring the desktop window to the foreground. False if this process has
+    no window (headless service)."""
+    w = _WINDOW
+    if w is None:
+        return False
+    try:
+        w.restore()
+    except Exception:
+        pass
+    if os.name == "nt":  # pragma: no cover - Windows GUI
+        try:
+            import ctypes
+
+            hwnd = int(getattr(getattr(w, "native", None), "Handle", 0) or 0)
+            if hwnd:
+                user32 = ctypes.windll.user32
+                user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+    return True
 
 
 def error_dialog(message: str) -> None:
@@ -95,8 +124,8 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         import webview
     except Exception as e:  # pragma: no cover - platform dependent
         raise RuntimeError(
-            "pywebview is not available. Run `io serve` and open "
-            f"{url} in a browser instead."
+            "pywebview is not available — the IO desktop window can't open. "
+            "Install it with `uv sync` (or `pip install pywebview`)."
         ) from e
 
     state = {"acrylic": False}
@@ -128,6 +157,13 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
                 window.toggle_fullscreen()
             except Exception:
                 pass
+            return self.is_fullscreen()
+
+        def is_fullscreen(self):
+            try:
+                return bool(getattr(window, "fullscreen", False))
+            except Exception:
+                return False
 
         def effects(self):
             return dict(state)
@@ -138,7 +174,7 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         x=geo.get("x"), y=geo.get("y"),
         min_size=(960, 640),
         fullscreen=fullscreen and not geo,
-        frameless=True, easy_drag=True,
+        frameless=True, easy_drag=False,   # drag only via the topbar's app-region
         text_select=True,
         js_api=_Api(),
     )
@@ -169,6 +205,15 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         except Exception:
             pass
 
+    global _WINDOW
+    _WINDOW = window
+
+    def _on_closing():
+        global _WINDOW
+        _save_geometry(window)
+        _WINDOW = None
+
     window.events.shown += _apply_backdrop
-    window.events.closing += lambda: _save_geometry(window)
+    window.events.closing += _on_closing
     webview.start()
+    _WINDOW = None

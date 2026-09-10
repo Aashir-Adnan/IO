@@ -1,5 +1,21 @@
 # Backlog (highest priority on top)
 
+- **Web-backed answers** (Phases 1–5 done 2026-09-09, branch `io-window-glass`,
+  spec `2026-09-09-web-answers-design.md`, knowledge `web-answers.md`).
+  Follow-ups:
+  - **Run it live** — `[web].enabled = true`, `dev.ps1 up` (starts SearXNG),
+    try "what's the news on Korea", "USD to PKR", "track the bitcoin price",
+    "USD to PKR vs yesterday". First real SearXNG contact — the `settings.yml`
+    JSON-format + engine list may need tuning.
+  - `query/compile.py` — actually compile the parsed `aggregation` (`latest`/
+    `count`) so Tier B deltas go through the general query pipeline, not just
+    `poller.delta_reading`.
+  - A `regex`-type catalogue entry (petrol PKR needs a stable source page).
+  - Cloud search provider slot (`[web].provider` beyond `searxng`/`none`).
+  - `io web` / `io track` CLI; a `[web]` toggle in frontend settings.
+  - Re-run the decide eval with `[web].enabled` to check the `decide.txt`
+    exception line doesn't regress Haiku.
+
 - **Phase 2 — Files & Media** (specs written 2026-09-08):
   - ~~Spec A — file index + text exploration~~ — DONE 2026-09-08 on branch
     `io-phase-2a-file-index` (267 pass). Not merged. See completed.md.
@@ -46,15 +62,44 @@
   PK-leading indexes dropped (0002), malformed-Ollama KeyError wrapped,
   resolver honours caller + stored aliases, persist_store resolves
   record-referenced names, recurrence_phrase gated, items link test added.
-- Date grounding vs 3B model: `ground()` returns ok=False for absolute/ISO dates,
-  and llama3.2:3b sometimes emits an ISO datetime as `when_phrase` (despite the
-  prompt saying "copy the raw phrase") → every such record needlessly gates.
-  Fix: (a) `ground()` should parse ISO-8601 and common absolute date strings via
-  `dateutil.parser` and return ok=True; (b) tighten the extract prompt /
-  post-process to strip model-invented ISO timestamps back toward "today".
-  (2026-09-08: relative durations now handled — "N weeks/months/years ago",
-  "in N weeks", "a year ago", "last/next month|year", "for N years now". ISO /
-  absolute-string parsing still open.)
+- ~~Date grounding vs absolute/ISO dates~~ — DONE 2026-09-09. `ground()` has a
+  `dateutil.parser` fuzzy fallback (`_parse_absolute` in `resolve/dates.py`):
+  "the 10th of september", "tomorrow, the 10th of september", "sept 10",
+  ISO "2026-09-10" all ground; a bare past month/day rolls to next year; true
+  garbage still gates. `tests/test_dates.py` +5. (2026-09-10 fix: the
+  "learned nothing" guard was rejecting a phrase that grounded to exactly
+  today-at-noon — now also checks for a digit/month token first.)
+
+- **Unified `decide` pipeline** — Phases 1–5 DONE 2026-09-09. Combined mode
+  live on anthropic (`[backend].decide = "auto"`), 17/17 on the Haiku eval.
+  Tokenised `file_tags` power "fetch pictures of me and nafay". **Remaining:**
+  - Measure the actual token saving; enable combined on local `quality` +
+    re-baseline against `llama3.2` on that profile.
+  - `PendingStore` only holds the gated store — a multi-step turn where the
+    store gates loses the other steps (`_merge_results` drops them).
+  - `file_tags` backfill: existing captions/summaries only get tags on the
+    next re-index or caption edit. A one-shot backfill would tag the corpus now.
+  - "me" expansion in `show_photos` args: when `decide` returns `of:["Nafay"]`
+    only, the photo of me+Nafay still matches, but a photo of just-me wouldn't.
+    Consider always injecting the self terms.
+- **Tauri shell migration** — spec `2026-09-09-tauri-shell-migration-
+  design.md`. Replace pywebview with a Rust Tauri host (Python service as a
+  sidecar), keep the web frontend as-is. 5 phases, each shippable.
+
+- **Media-by-entity gallery query** — "fetch all pictures of me and nafay".
+  The caption→`FileEntityLink`→embed half works (`apply_caption`,
+  `search.py` joins `FileEntityLink`), but the retrieval comes back as a
+  **text `files` card**, not a photo gallery, and isn't media-filtered. Want:
+  route "pictures/photos/videos of <people>" → a `GalleryCard` filtered to
+  media linked to those entities. Fits the `decide` spec's `show_photos`
+  action. ("me" also isn't a Person row — no self entity.)
+- **Local streaming Whisper — end-to-end unverified**. Plumbing + WS + config
+  tested; needs a real mic + the `large-v3-turbo` download to confirm the
+  rolling-transcribe UX. Partial-stabilisation params (`_MIN_NEW_SECONDS`,
+  `_KEEP_PROVISIONAL_SECONDS`) will likely need tuning against real speech.
+- **Record edit is title/date/kind/domain/status only** — no body edit, no
+  entity-link edit (add/remove a person from a record), no undo. Entity
+  delete has no "merge into" (for dedup — two "birthday" occasions).
 - CLI hardening (Plan 3/4 or standalone): `io repl` should catch per-line
   exceptions and continue instead of dying; persist `stripped` not raw `line`
   into `Utterance.text` (cli.py); rename `_make_session_factory` (returns a

@@ -3,6 +3,7 @@ embedding_dim = 768
 
 [backend]
 provider = "anthropic"      # "local" | "anthropic" | "hybrid"
+decide = "auto"             # "auto" | "combined" | "split" — see docs/superpowers/specs/2026-09-09-unified-decide-pipeline-design.md
 profile = "light"           # "light" | "quality"
 anthropic_model = "claude-haiku-4-5"
 ollama_url = "http://localhost:11434"
@@ -22,6 +23,16 @@ speak_in_app = false
 length_scale = 1.06
 noise_scale = 0.667
 noise_w_scale = 0.85
+# stt_provider:
+#   "whisper"        local, batch — transcribes when you stop talking.
+#   "whisper-stream" local, real-time — a rolling faster-whisper loop. First
+#                    use downloads ~1.5 GB (whisper_stream_model); best on a
+#                    GPU, pins it during a call. Fully offline.
+#   "soniox"         cloud, real-time — needs SONIOX_API_KEY (see
+#                    rules/local-first.md); falls back to "whisper" if unset.
+stt_provider = "whisper-stream"
+whisper_stream_model = "large-v3-turbo"
+soniox_model = "stt-rt-v5"
 
 [capture]
 hotkey = "<ctrl>+<alt>+space"
@@ -38,9 +49,26 @@ min_think_ms = 600
 # IO can read files under these locations and any path you register.
 # NOTE: when [backend].provider is "anthropic" or "hybrid", file text is sent
 # to api.anthropic.com for summarising and answering. Embeddings stay local.
-enabled = false
-allowlist_roots = []
+enabled = true
+allowlist_roots = ["~/Documents", "~/Downloads", "~/Desktop", "~/Pictures"]
 max_file_bytes = 2000000
+
+[web]
+# Opt-in web-backed answers ("what's the news on Korea?", "USD to PKR").
+# Disabled by default: general-knowledge questions stay unanswered, as before.
+# The default engine is a self-hosted SearXNG in IO's own Docker stack
+# (localhost, started by `dev.ps1 up`). Page fetches go direct to result URLs.
+# When [backend].provider is "anthropic"/"hybrid", one synthesis call per
+# uncached news/open question sends page excerpts to api.anthropic.com.
+# See .claude/rules/local-first.md.
+enabled = false
+provider = "searxng"          # "searxng" | "none"
+searxng_url = "http://localhost:8888"
+max_pages = 4
+fetch_bytes = 400000
+news_ttl_min = 30
+fact_ttl_min = 360
+instant_ttl_min = 1440
 
 [resolver]
 fuzzy_threshold = 92

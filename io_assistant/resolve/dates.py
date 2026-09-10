@@ -41,6 +41,11 @@ _WEEKDAYS = {
     "sun": 6,
 }
 
+# a digit or a month name — enough to say a phrase carries a real date
+_DATEISH = re.compile(
+    r"\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec", re.IGNORECASE
+)
+
 _RRULE_WEEKDAY_CODE = {
     0: "MO",
     1: "TU",
@@ -172,7 +177,38 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
     if text in _WEEKDAYS:
         return DateResult(_noon(_next_weekday(now, _WEEKDAYS[text])), True)
 
+    # Last resort — an absolute or ISO date ("the 10th of september",
+    # "sept 10", "2026-09-10", "tomorrow the 10th"). dateutil is fuzzy so it
+    # skips filler words and any relative prefix; the year defaults to now's.
+    grounded = _parse_absolute(text, now)
+    if grounded is not None:
+        return DateResult(grounded, True)
+
     return DateResult(None, False)
+
+
+def _parse_absolute(phrase: str, now: datetime) -> datetime | None:
+    from dateutil import parser as _dateparser
+
+    base = _noon(now)
+    try:
+        dt = _dateparser.parse(phrase, default=base, fuzzy=True)
+    except (ValueError, OverflowError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=now.tzinfo)
+    # a fuzzy parse that landed exactly on the default AND had no date-like
+    # token to work from learned nothing ("some time soon-ish maybe"). A month
+    # name or digit means the phrase really is a date that just happens to fall
+    # on today's noon.
+    if dt == base and not _DATEISH.search(phrase):
+        return None
+    # a bare month/day with no year that already passed → assume next year
+    if not re.search(r"\d{4}", phrase) and dt.date() < now.date() - timedelta(days=1):
+        dt = dt.replace(year=dt.year + 1)
+    if abs((dt - now).days) > 366 * 5:
+        return None
+    return dt
 
 
 def to_rrule(phrase: str | None) -> str | None:

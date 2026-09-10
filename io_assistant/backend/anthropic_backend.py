@@ -5,8 +5,10 @@ from datetime import datetime
 from importlib import resources
 
 from io_assistant.config import Config
-from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape
+from io_assistant.models_domain import ExtractionResult, Intent, AnswerShape, Plan
 from io_assistant.extract.schema import SCHEMA_JSON, FEWSHOT
+from io_assistant.actions.registry import describe_capabilities
+from io_assistant.decide.parse import parse_plan
 from io_assistant.backend.interface import BackendParseError, render_context
 
 
@@ -103,6 +105,26 @@ class AnthropicBackend:
             return ExtractionResult.model_validate_json(out)
         except Exception as e:
             raise BackendParseError(str(e)) from e
+
+    def decide(self, utterance: str, now: datetime, *, context: str | None = None,
+               files_enabled: bool = False, web_enabled: bool = False) -> Plan:
+        caps = describe_capabilities(
+            files_enabled=files_enabled, web_enabled=web_enabled
+        ) or "  (none)"
+        system = [{
+            "type": "text",
+            "text": (
+                "You are IO's turn planner. Output one JSON object and nothing "
+                "else.\n\nCapabilities:\n" + caps + "\n\nEXTRACTION schema:\n" + SCHEMA_JSON
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }]
+        user = _prompt("decide.txt").format(
+            capabilities=caps, schema="(see system)",
+            context=render_context(context), now=now.isoformat(), utterance=utterance,
+        )
+        out = self._complete(system, user, max_tokens=1200)
+        return parse_plan(out, files_enabled=files_enabled)
 
     def plan(
         self, question: str, now: datetime, *, context: str | None = None

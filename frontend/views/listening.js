@@ -16,7 +16,7 @@ export async function mount(root, ctx) {
         </div>
       </div>
       <div class="listening-orb"></div>
-      <div class="listening-hint mono">RELEASE <b>⌥ SPACE</b> TO SEND · <b>ESC</b> TO CANCEL</div>
+      <div class="listening-hint mono">RELEASE <b>ALT SPACE</b> TO SEND · <b>ESC</b> TO CANCEL</div>
     </section>`;
 
   const orb = Orb(root.querySelector(".listening-orb"), { mode: "listening", size: 300 });

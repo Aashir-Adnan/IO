@@ -110,10 +110,23 @@ class FileIndexer:
         node.embedding = self._embed.embed_one(summary)
 
         resolver = EntityResolver(session, self._embed, self._resolver_cfg)
-        by_type = resolve_query_entities(resolver, session, res.get("names", []))
+        names = res.get("names", [])
+        by_type = resolve_query_entities(resolver, session, names)
+        linked_norm: dict[str, tuple[str, int]] = {}
         for etype, ids in by_type.items():
             for eid in ids:
                 self._index.link_entity(session, node.id, etype, eid, source="summary")
+        # tokenised tags from the summary + the names the model pulled out
+        try:
+            from io_assistant.files.tags import TagSpec, salient_terms, write_tags
+            from io_assistant.models_domain import ExtractionResult
+
+            specs = list(salient_terms(ExtractionResult(), summary, "", topic_source=True))
+            specs += [TagSpec(term=n, norm=n.strip().lower(), kind="topic")
+                      for n in names if n and n.strip()]
+            write_tags(session, node.id, node.media_kind, specs, source="summary")
+        except Exception:  # noqa: BLE001 - tags are best-effort
+            pass
 
         self._reference_edges(session, node, res.get("references", []))
         self._contains_edge(session, node, gate)

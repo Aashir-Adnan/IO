@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from io_assistant.db import models as m
 
-__all__ = ["entity_panel", "standby_panel"]
+__all__ = ["entity_panel", "standby_panel", "records_list", "record_entities", "record_brief"]
 
 _ETYPE = {
     "person": (m.Person, m.Person.canonical_name, m.RecordPerson, m.RecordPerson.person_id, "PERSON"),
@@ -78,6 +78,44 @@ def entity_panel(session, etype: str, entity_id: int) -> dict | None:
         "confidence": round(confidence, 3),
         "sourced_from": len({rid for f in facts for rid in f["record_ids"]}),
     }
+
+
+def record_entities(session, record_id: int) -> list[dict]:
+    out = []
+    for etype, (model, name_col, link, link_eid, _r) in _ETYPE.items():
+        for eid, name in session.execute(
+            select(model.id, name_col)
+            .join(link, link_eid == model.id)
+            .where(link.record_id == record_id)
+        ).all():
+            out.append({"etype": etype, "id": eid, "name": name})
+    return out
+
+
+def record_brief(session, r) -> dict:
+    when = r.occurred_at or r.due_at
+    return {
+        "id": r.id,
+        "kind": r.kind,
+        "domain": r.domain,
+        "title": r.title,
+        "body": r.body,
+        "status": r.status,
+        "when": when.isoformat() if when else None,
+        "when_kind": "due" if (r.due_at and not r.occurred_at) else "occurred",
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "entities": record_entities(session, r.id),
+    }
+
+
+def records_list(session, *, limit: int = 200, kind: str | None = None,
+                 domain: str | None = None) -> list[dict]:
+    q = select(m.Record).order_by(m.Record.created_at.desc()).limit(limit)
+    if kind:
+        q = q.where(m.Record.kind == kind)
+    if domain:
+        q = q.where(m.Record.domain == domain)
+    return [record_brief(session, r) for r in session.execute(q).scalars().all()]
 
 
 def standby_panel(session, config, recall_ms: int) -> dict:

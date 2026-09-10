@@ -203,3 +203,40 @@ def test_rrule_unknown_none():
 
 def test_rrule_none():
     assert to_rrule(None) is None
+
+
+# --- absolute / ISO date grounding (the dateutil fallback) --------------------
+
+def test_absolute_the_10th_of_september():
+    r = ground("the 10th of september", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 10)
+
+
+def test_absolute_with_relative_prefix():
+    # the user's real phrasing — "tomorrow, the 10th of september"
+    r = ground("tomorrow, the 10th of september", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 10)
+
+
+def test_iso_date_grounds():
+    r = ground("2026-12-01", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 12, 1)
+
+
+def test_bare_month_day_in_the_past_rolls_to_next_year():
+    r = ground("3rd of january", NOW)   # Jan already passed relative to Sep
+    assert r.ok and r.value.date() == dt.date(2027, 1, 3)
+
+
+def test_true_garbage_still_gates():
+    r = ground("some time soon-ish maybe", NOW)
+    assert r.ok is False and r.value is None
+
+
+def test_absolute_date_equal_to_today_still_grounds():
+    # regression: "the 10th of september" grounded on the 10th landed exactly on
+    # the noon default and was wrongly rejected as "learned nothing" (→ a 422 on
+    # PATCH /record). A month/day token means the phrase really is a date.
+    today = dt.datetime(2026, 9, 10, 9, 30, tzinfo=dt.timezone.utc)
+    r = ground("the 10th of september", today)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 10)

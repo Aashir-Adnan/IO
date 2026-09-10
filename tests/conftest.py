@@ -126,6 +126,19 @@ class FakeBackend:
     def set_plan(self, d: dict):
         self._plan = d
 
+    def set_decide(self, plan):
+        """plan: a models_domain.Plan (enables combined-mode `decide`)."""
+        self._decide_plan = plan
+
+    def decide(self, utterance, now, *, context=None, files_enabled=False, web_enabled=False):
+        self._ctx(context)
+        self.calls.append("decide")
+        plan = getattr(self, "_decide_plan", None)
+        if plan is None:
+            from io_assistant.backend.interface import BackendParseError
+            raise BackendParseError("no decide plan set on FakeBackend")
+        return plan
+
     def set_ack(self, s: str):
         self._ack = s
 
@@ -146,6 +159,7 @@ class FakeBackend:
     def phrase(self, question, rows, shape, *, context: str | None = None) -> str:
         self._ctx(context)
         self.calls.append("phrase")
+        self.last_phrase_rows = rows
         return self._answer
 
     def acknowledge(self, facts: str, *, context: str | None = None) -> str:

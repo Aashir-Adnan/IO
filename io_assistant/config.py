@@ -18,6 +18,10 @@ class BackendConfig(BaseModel):
     provider: Literal["local", "anthropic", "hybrid"]
     profile: Literal["light", "quality"]
     anthropic_model: str
+    # "auto": one combined route+extract+plan call on anthropic/hybrid (and
+    # local "quality"), the tuned two-step on local "light". "combined" /
+    # "split" force it. Parse failure always falls back to split.
+    decide: Literal["auto", "combined", "split"] = "auto"
     ollama_url: str
     ollama_keep_alive: str
     instruct_model: str
@@ -43,9 +47,31 @@ class VoiceConfig(BaseModel):
     noise_scale: float = 0.667
     noise_w_scale: float = 0.85
 
+    # Speech-to-text mode:
+    #   "whisper"        local, batch — transcribes when you stop talking.
+    #   "whisper-stream" local, real-time — a rolling faster-whisper loop emits
+    #                    words + corrections as you speak. Loads a ~1.5 GB
+    #                    model and pins the GPU during a call (best on a GPU;
+    #                    on CPU it lags). Fully offline.
+    #   "soniox"         cloud, real-time — needs SONIOX_API_KEY (see
+    #                    rules/local-first.md). Falls back to "whisper" if unset.
+    stt_provider: Literal["whisper", "whisper-stream", "soniox"] = "whisper"
+    soniox_model: str = "stt-rt-v5"
+    whisper_stream_model: str = "large-v3-turbo"
+
     @property
     def resolved_voice_path(self) -> Path:
         return Path(expanduser(self.voices_dir)) / f"{self.tts_voice}.onnx"
+
+    @property
+    def soniox_api_key(self) -> str | None:
+        return os.environ.get("SONIOX_API_KEY") or None
+
+    @property
+    def stt_streaming(self) -> bool:
+        if self.stt_provider == "whisper-stream":
+            return True
+        return self.stt_provider == "soniox" and bool(self.soniox_api_key)
 
 class CaptureConfig(BaseModel):
     hotkey: str = "<ctrl>+<alt>+space"
@@ -87,6 +113,21 @@ class FilesConfig(BaseModel):
     follow_symlinks: bool = False
     thumbs_dir: str = "~/.local/share/io/thumbs"
 
+class WebConfig(BaseModel):
+    # Opt-in web-backed answers. Default engine is a self-hosted SearXNG in
+    # IO's own Docker stack (localhost). A cloud provider is a deliberate
+    # exception — see rules/local-first.md. enabled=false => general-knowledge
+    # questions stay "unknown", exactly as before.
+    enabled: bool = False
+    provider: Literal["searxng", "none"] = "searxng"
+    searxng_url: str = "http://localhost:8888"
+    max_pages: int = 4
+    fetch_bytes: int = 400_000
+    news_ttl_min: int = 30
+    fact_ttl_min: int = 360
+    instant_ttl_min: int = 1440
+
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -97,6 +138,18 @@ class Config(BaseModel):
     capture: CaptureConfig = CaptureConfig()
     ui: UiConfig = UiConfig()
     files: FilesConfig = FilesConfig()
+    web: WebConfig = WebConfig()
+
+    @property
+    def owner_name(self) -> str:
+        """The user's own name — for resolving "me"/"I"/"my" in captions and
+        queries. `ui.name`, else the OS user, else "" (no self tag)."""
+        return (
+            self.ui.name
+            or os.environ.get("USERNAME")
+            or os.environ.get("USER")
+            or ""
+        )
 
 _WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
 

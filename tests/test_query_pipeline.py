@@ -43,3 +43,59 @@ def test_pipeline_answers_from_stored_record(db, config, fake_backend):
     ans = pipe.answer(db, "when did I last see Nafay?", NOW)
     assert ans.n_rows == 1
     assert "Nafay" in ans.text
+
+
+@requires_db
+def test_family_query_passes_names_and_body_to_phrasing(db, config, fake_backend):
+    """Regression: "who is my family" returned a person-target plan whose rows
+    reached the phrasing model with title=null (Person uses canonical_name) and
+    no body — so the model refused. The row JSON must carry both now."""
+    u = m.Utterance(text="my family", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    people = []
+    for name in ("Mehnaz Afzal", "Adnan Afzal", "Zoha Adnan"):
+        p = m.Person(canonical_name=name, aliases=[])
+        db.add(p); db.flush()
+        people.append(p)
+    r = m.Record(
+        kind="fact", domain="social", title="Family relationships",
+        body="Mother is Mehnaz Afzal, father is Adnan Afzal (physiotherapist), "
+             "sister is Zoha Adnan",
+        attributes={}, source_utterance_id=u.id,
+    )
+    db.add(r); db.flush()
+    for p in people:
+        db.add(m.RecordPerson(record_id=r.id, person_id=p.id))
+    db.flush()
+
+    fake_backend.set_plan({
+        "subqueries": [{"target_type": "record", "domain_filter": ["social"],
+                        "semantic_hint": "family relationships"}],
+        "answer_shape": "text",
+    })
+    fake_backend.set_answer("Your mother is Mehnaz Afzal, your father Adnan Afzal, "
+                            "your sister Zoha Adnan.")
+
+    pipe = QueryPipeline(fake_backend, _Emb(), config.resolver)
+    ans = pipe.answer(db, "who is my family?", NOW)
+
+    blob = str(fake_backend.last_phrase_rows)
+    assert "Mehnaz Afzal" in blob and "physiotherapist" in blob
+    assert "Zoha Adnan" in ans.text
+
+
+@requires_db
+def test_person_target_rows_carry_the_name(db, config, fake_backend):
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    db.add(m.Person(canonical_name="Priya", aliases=[], notes="ceramics friend"))
+    db.flush()
+
+    fake_backend.set_plan({"subqueries": [{"target_type": "person"}],
+                           "answer_shape": "text"})
+    fake_backend.set_answer("Priya.")
+    QueryPipeline(fake_backend, _Emb(), config.resolver).answer(db, "who is Priya?", NOW)
+
+    row = next(x for x in fake_backend.last_phrase_rows if x["type"] == "person")
+    assert row["title"] == "Priya"
+    assert row["notes"] == "ceramics friend"

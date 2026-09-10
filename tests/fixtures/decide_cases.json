@@ -1,0 +1,23 @@
+[
+  {"utterance": "I had coffee with Priya this morning at North Kiln",
+   "kinds": ["store"]},
+  {"utterance": "remind me to submit the report tomorrow", "kinds": ["store"]},
+  {"utterance": "I've been at Granjur Technologies for two years now", "kinds": ["store"]},
+  {"utterance": "Eelian and Nafay are friends; he's moving away on the 10th of september",
+   "kinds": ["store"]},
+  {"utterance": "what do I need to do today?", "kinds": ["query"]},
+  {"utterance": "when did I last see Marcus?", "kinds": ["query"]},
+  {"utterance": "guess who I ran into at work today", "kinds": ["query"]},
+  {"utterance": "bet you forgot my sister's birthday", "kinds": ["query"]},
+  {"utterance": "how's my gym been going?", "kinds": ["query"]},
+  {"utterance": "what does my lease say about pets?", "kinds": ["file"]},
+  {"utterance": "open the folder called Downloads", "kinds": ["action", "file"]},
+  {"utterance": "fetch all pictures of me and Nafay", "kinds": ["action", "file"]},
+  {"utterance": "pull up my passport", "kinds": ["action", "file"]},
+  {"utterance": "where's my CNIC card?", "kinds": ["action", "file", "query"]},
+  {"utterance": "remind me to call mum, and what's on Friday?", "kinds": ["store", "query"]},
+  {"utterance": "I finished the deck; when is it due again?", "kinds": ["store", "query"]},
+  {"utterance": "hello there", "kinds": ["unknown"]},
+  {"utterance": "what's the capital of France?", "kinds": ["unknown"]},
+  {"utterance": "write me an email to my landlord", "kinds": ["unknown"]}
+]

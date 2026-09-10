@@ -344,3 +344,86 @@ class FileCaption(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class FileTag(Base):
+    """A salient term pulled from a file's caption or summary — the fast,
+    fuzzy surface layer over FileEntityLink. "me and nafay in hunza" tags a
+    picture with ("Nafay", person), ("Hunza", place), ("<owner>", self),
+    ("Me", self). `media_kind` is denormalised so "photos of X" is one query.
+    """
+    __tablename__ = "file_tags"
+    __table_args__ = (
+        Index("ix_file_tags_uniq", "file_id", "norm", "kind", unique=True),
+        Index("ix_file_tags_norm", "norm"),
+        Index("ix_file_tags_media_norm", "media_kind", "norm"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    file_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("file_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    term: Mapped[str] = mapped_column(Text, nullable=False)
+    norm: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    media_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    entity_etype: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(String(8), nullable=False, server_default="caption")
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class WebCache(Base):
+    """A web-backed answer held until expires_at — a Tier-A templated reply or
+    a Tier-C single-call synthesis. Keyed by normalised query + kind so a
+    repeat question inside the TTL costs zero network and zero model tokens."""
+    __tablename__ = "web_cache"
+    __table_args__ = (
+        Index("ix_web_cache_uniq", "query_norm", "kind", unique=True),
+        Index("ix_web_cache_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    query_norm: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # news|fact|instant
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    tier: Mapped[str] = mapped_column(String(1), nullable=False)  # a|c
+    fetched_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Tracker(Base):
+    """Tier B: a labelled web source polled on an interval. Each poll writes a
+    `reading` record, so "petrol today vs yesterday" is a query over memory."""
+    __tablename__ = "trackers"
+    __table_args__ = (
+        Index("ix_trackers_norm", "norm", unique=True),
+        Index("ix_trackers_enabled", "enabled", postgresql_where=text("enabled")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    norm: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    extractor: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    interval_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="720")
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    last_polled_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

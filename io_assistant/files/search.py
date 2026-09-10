@@ -99,6 +99,17 @@ class FileSearcher:
         ).all():
             bump(fid, similarity=1.0 - float(dist), why="similar summary")
 
+        # 1c-tags: tokenised salient terms → file_tags (fuzzy, fast)
+        from io_assistant.files.tags import query_terms
+        for term in query_terms(question, ""):
+            for fid, hit_term in session.execute(
+                select(m.FileTag.file_id, m.FileTag.term)
+                .where((m.FileTag.norm == term)
+                       | (func.similarity(m.FileTag.norm, term) >= 0.45))
+                .limit(40)
+            ).all():
+                bump(fid, entity=0.9, why=f"tagged {hit_term}")
+
         # 1c entity
         names = [w.strip(".,!?") for w in question.split() if w[:1].isupper()]
         if names:

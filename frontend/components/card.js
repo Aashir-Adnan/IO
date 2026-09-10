@@ -45,6 +45,16 @@ export function renderCard(card, ctx) {
     el.className = "card-sources mono";
     el.innerHTML = `${icon("brain", { size: 13 })}<span>${card.count} ${card.count === 1 ? "MEMORY" : "MEMORIES"} USED</span>` +
       (card.labels || []).map((l) => `<span class="sep">·</span><span>${escape(l).toUpperCase()}</span>`).join("");
+  } else if (card.type === "web") {
+    el.className = "card card-web mono";
+    const tier = card.cached ? "CACHED" : (card.tier === "a" ? "INSTANT" : "WEB");
+    el.innerHTML =
+      `${icon("globe", { size: 13 })}<span>${tier} · ${escape(card.kind || "").toUpperCase()}</span>` +
+      (card.sources || []).map((s) => {
+        let host = s.url;
+        try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch { /* keep */ }
+        return `<a class="web-src" href="${escape(s.url)}" target="_blank" rel="noopener" title="${escape(s.title)}">${escape(host)}</a>`;
+      }).join("");
   } else if (card.type === "files") {
     el.className = "card card-files";
     el.innerHTML = `<div class="card-h mono"><span>${card.searched || 0} FILES SEARCHED</span></div>`;

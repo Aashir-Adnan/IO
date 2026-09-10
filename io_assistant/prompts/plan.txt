@@ -22,6 +22,10 @@ Rules:
   Never compute a date.
 - A simple question is ONE subquery. Use two only when the question genuinely
   asks for two different sets (e.g. "work" = job records + chores).
+- "who is / who are my <group>" (my family, my team, my flatmates) asks about
+  facts, not a person lookup: use target_type "record" with a semantic_hint
+  like "family relationships", NOT target_type "person". target_type "person"
+  is only for questions answerable from the person list alone.
 - entities: names exactly as the user wrote them, unresolved.
 - semantic_hint: only when wording matters beyond the filters; else null.
 - answer_shape: "markdown" for lists/tables, "diagram" only if a chart/timeline

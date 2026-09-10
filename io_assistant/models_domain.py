@@ -74,6 +74,31 @@ class ExtractionResult(BaseModel):
     records: list[ExtractedRecord] = Field(default_factory=list)
 
 
+# --- the unified "decide" plan --------------------------------------------------
+# One turn → one Plan → an ordered list of Steps. Today the split-mode planner
+# always emits exactly one step (mirrors route+extract); the combined planner
+# (backend.decide) may emit several. See docs/superpowers/specs/
+# 2026-09-09-unified-decide-pipeline-design.md.
+
+StepKind = Literal["store", "query", "file", "action", "unknown"]
+
+
+class Step(BaseModel):
+    kind: StepKind
+    # kind == "store": the extraction to persist (None → extraction failed)
+    extraction: "ExtractionResult | None" = None
+    # kind == "query" / "file": the (possibly lightly-rewritten) request text
+    question: str | None = None
+    # kind == "action": a capability slug from io_assistant.actions.registry
+    action: str | None = None
+    args: dict = Field(default_factory=dict)
+
+
+class Plan(BaseModel):
+    steps: list[Step] = Field(default_factory=list)
+    reply_hint: str | None = None   # optional phrasing seed for the responder
+
+
 # --- structured cards returned alongside a turn's prose -----------------------
 
 class EntityRef(BaseModel):
@@ -128,13 +153,15 @@ class FilesCard(BaseModel):
 
 class GalleryItem(BaseModel):
     path: str
-    media_kind: str
+    media_kind: str                 # image | video | audio | doc | file
     thumb_url: str | None = None
     raw_url: str
     has_thumb: bool = False
     caption: str | None = None
     entities: list[EntityRef] = Field(default_factory=list)
     captured_at: datetime | None = None
+    size_bytes: int | None = None
+    indexed: bool = True
 
 
 class GalleryCard(BaseModel):
@@ -144,7 +171,20 @@ class GalleryCard(BaseModel):
     items: list[GalleryItem] = Field(default_factory=list)
 
 
-Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard
+class WebSource(BaseModel):
+    title: str
+    url: str
+
+
+class WebCard(BaseModel):
+    type: Literal["web"] = "web"
+    tier: str                       # a | c | cache
+    kind: str                       # news | fact | instant
+    sources: list[WebSource] = Field(default_factory=list)
+    cached: bool = False
+
+
+Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard | WebCard
 
 
 def normalize_kind(raw: str) -> str:

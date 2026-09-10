@@ -1,7 +1,15 @@
 // Thin client for the IO service. All calls are relative -> same origin (127.0.0.1).
 export function Api(base = "") {
   const b = base.replace(/\/$/, "");
-  const j = (r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); };
+  const j = async (r) => {
+    if (r.ok) return r.json();
+    let detail = "";
+    try { detail = (await r.json()).detail; } catch { /* no body */ }
+    const err = new Error(detail ? `${r.status} ${detail}` : `${r.status} ${r.statusText}`);
+    err.status = r.status;
+    err.detail = typeof detail === "string" ? detail : "";
+    throw err;
+  };
 
   return {
     async health() { return j(await fetch(`${b}/health`)); },
@@ -36,6 +44,24 @@ export function Api(base = "") {
     async conversations() { return j(await fetch(`${b}/conversations`)); },
     async newConversation() { return j(await fetch(`${b}/conversation`, { method: "POST" })); },
     async entity(etype, id) { return j(await fetch(`${b}/entity/${etype}/${id}`)); },
+    async deleteEntity(etype, id) {
+      return j(await fetch(`${b}/entity/${etype}/${id}`, { method: "DELETE" }));
+    },
+    async records({ limit = 300, kind, domain } = {}) {
+      const q = new URLSearchParams({ limit });
+      if (kind) q.set("kind", kind);
+      if (domain) q.set("domain", domain);
+      return j(await fetch(`${b}/records?${q}`));
+    },
+    async editRecord(id, patch) {
+      return j(await fetch(`${b}/record/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      }));
+    },
+    async deleteRecord(id) {
+      return j(await fetch(`${b}/record/${id}`, { method: "DELETE" }));
+    },
 
     async files() { return j(await fetch(`${b}/files`)); },
     async registerFile(path) {
@@ -80,8 +106,15 @@ export function Api(base = "") {
     },
     async transcribeAudio(wavBlob) {
       const fd = new FormData();
-      fd.append("audio", wavBlob, "caption.wav");
-      return j(await fetch(`${b}/files/transcribe`, { method: "POST", body: fd }));
+      fd.append("audio", wavBlob, "speech.wav");
+      return j(await fetch(`${b}/voice/transcribe`, { method: "POST", body: fd }));
+    },
+    async sttMode() {
+      try { return j(await fetch(`${b}/voice/stt`)); }
+      catch { return { provider: "whisper", streaming: false }; }
+    },
+    async sttStreamToken() {
+      return j(await fetch(`${b}/voice/stream-token`, { method: "POST" }));
     },
 
     connectWs(onFrame) {

@@ -1,5 +1,5 @@
 import { icon } from "../vendor/icons.js";
-import { mount as mountFolders } from "../views/files.js";
+import { mountFolders } from "../views/library.js";
 
 function esc(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -15,6 +15,13 @@ export function Settings(el, scrim, ctx) {
         <button class="settings-close" aria-label="Close">${icon("check", { size: 16 })}</button>
       </header>
       <div class="settings-body">
+        <section class="settings-sec">
+          <div class="settings-sec-h">Appearance</div>
+          <div class="theme-toggle" role="group" aria-label="Theme">
+            <button type="button" data-theme-set="dark">Dark</button>
+            <button type="button" data-theme-set="light">Light</button>
+          </div>
+        </section>
         <section class="settings-sec">
           <div class="settings-sec-h">Voice</div>
           <label class="settings-row">
@@ -33,6 +40,23 @@ export function Settings(el, scrim, ctx) {
     el.querySelector("#set-speak").onchange = (e) => {
       ctx.store.set({ autoSpeak: e.target.checked ? "always" : "never" });
     };
+
+    const curTheme = document.documentElement.getAttribute("data-theme") || "dark";
+    const tt = el.querySelector(".theme-toggle");
+    const paint = () => {
+      const t = document.documentElement.getAttribute("data-theme") || "dark";
+      tt.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.themeSet === t));
+    };
+    tt.querySelectorAll("button").forEach((b) => {
+      b.onclick = () => {
+        const t = b.dataset.themeSet;
+        document.documentElement.setAttribute("data-theme", t);
+        try { localStorage.setItem("io.theme", t); } catch { /* private mode */ }
+        paint();
+      };
+    });
+    if (curTheme) paint();
+
     mountFolders(el.querySelector(".settings-folders"), ctx);
   }
 

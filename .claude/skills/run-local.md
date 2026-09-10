@@ -9,12 +9,14 @@ need `export PATH="$HOME/.local/bin:$PATH"` first.
 Postgres, checks/starts Ollama, migrates, and runs the `io` service.
 
 ```
-.\dev.ps1 up          # Postgres + Ollama + migrate + io service (background)
-.\dev.ps1 up -Window  #  ... open the desktop window; closing it shuts the stack down
+.\dev.ps1 up          # Postgres + Ollama + migrate + io service, THEN the desktop
+                      #   window; closing the window shuts the whole stack down
+.\dev.ps1 serve       # ... headless (no window) — for tests / background use
+.\dev.ps1 up -NoWindow # same as `serve`
 .\dev.ps1 build       # generate the icon + PyInstaller one-dir bundle (dist\IO\IO.exe)
 .\dev.ps1 install     # Desktop "IO" shortcut -> dist\IO\IO.exe (runs build if needed;
-                      #   a second launch just opens the running window in the browser)
-.\dev.ps1 app         # open the UI (http://localhost:8765/app/) in a browser
+                      #   a second launch just brings the running window to the front)
+.\dev.ps1 app         # open the desktop window (service must already be up)
 .\dev.ps1 listen      # voice mode
 .\dev.ps1 status      # what's running
 .\dev.ps1 logs        # tail the service log
@@ -25,9 +27,11 @@ Postgres, checks/starts Ollama, migrates, and runs the `io` service.
 ```
 
 Runtime state (service PID + logs) lives in `.io-dev/` (gitignored). Ollama is
-left running by `down` (it's a shared service). Credentials come from `.env`
-(`ANTHROPIC_AUTH_TOKEN` for the cloud backend; not needed for
-`[backend].provider = "local"`).
+left running by `down` (it's a shared service). Credentials come from `.env`:
+`ANTHROPIC_AUTH_TOKEN` for the cloud backend (not needed for
+`[backend].provider = "local"`); `SONIOX_API_KEY` for real-time streaming STT
+(`[voice].stt_provider = "soniox"` — otherwise the ask-bar mic uses local
+Whisper batch).
 
 The manual steps below are what `dev.ps1` automates.
 
@@ -71,8 +75,9 @@ both models pulled, both databases reachable, pgvector present in both.
 ```
 uv run alembic upgrade head
 uv run io repl                 # typed REPL
-uv run io serve                # local FastAPI service (127.0.0.1:8765)
-uv run io run                  # service + desktop window (/app)
+uv run io serve                # local FastAPI service, headless (127.0.0.1:8765)
+uv run io run                  # service + desktop window (the normal way to use IO;
+                               #   a 2nd `io run` just raises the existing window)
 ```
 
 ## Voice (Plan 4)

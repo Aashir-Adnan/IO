@@ -13,6 +13,7 @@ from io_assistant.query.rank import rank
 from io_assistant.query.recur import expand_recurrences
 from io_assistant.query.respond import Responder
 from io_assistant.query.retrieve import retrieve_subquery
+from io_assistant.progress import emit as _emit
 from io_assistant.resolve.resolver import EntityResolver
 
 __all__ = ["QueryAnswer", "QueryPipeline", "RecordRef"]
@@ -77,12 +78,16 @@ class QueryPipeline:
     ) -> QueryAnswer:
         embedder = self._embedder
         plan = Planner(self._backend).run(question, now, context=context)
+        _emit("Retrieval plan ready",
+              f"{len(plan.subqueries)} subquery(ies), "
+              f"target {plan.subqueries[0].target_type if plan.subqueries else '?'}")
 
         groups = []
         starts: list[datetime] = []
         ends: list[datetime] = []
         for sq in plan.subqueries:
             resolver = EntityResolver(session, embedder, self._cfg)
+            _emit("Resolving people & places", ", ".join(sq.entities) or "—")
             ids = resolve_query_entities(resolver, session, sq.entities)
             groups.append(retrieve_subquery(session, embedder, sq, ids, now))
             if sq.time_window is not None:
@@ -99,6 +104,7 @@ class QueryPipeline:
         expanded.sort(key=lambda r: r.score, reverse=True)
         final = expanded[:_TOP_N]
 
+        _emit("Writing the answer", f"{len(final)} row(s) matched")
         text = Responder(self._backend).run(
             question, final, plan.answer_shape, context=context
         )
