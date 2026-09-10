@@ -111,6 +111,9 @@ class Record(Base):
     occurred_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str | None] = mapped_column(String(12), nullable=True)  # open|done|dropped
+    completed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     recurrence_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
     assigned_by_person_id: Mapped[int | None] = mapped_column(
         ForeignKey("people.id", ondelete="SET NULL"), nullable=True
