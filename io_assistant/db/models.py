@@ -129,6 +129,36 @@ class Record(Base):
     )
 
 
+class Collection(Base):
+    """A learned descriptor for an ad-hoc personal list (movies to watch, books
+    to read, gift ideas). Created the first time the extraction model flags a
+    record as an item in such a list; keyed by the records.kind slug the items
+    share. synonyms / item_noun feed the plan/decide prompts so the list stays
+    findable. The model only *proposes* — Python (collections/registry.py) owns
+    identity."""
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind_slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    item_noun: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synonyms: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    field_hint: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    example_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("records.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+
+
 class RecordPerson(Base):
     __tablename__ = "record_people"
 
