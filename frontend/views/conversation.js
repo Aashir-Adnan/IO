@@ -247,9 +247,33 @@ function renderAssistant(thread, frame, ctx, after) {
   if (frame.pending_token) {
     const bar = document.createElement("div");
     bar.className = "gate-actions";
-    bar.innerHTML = `<button class="btn btn-primary" data-yes>Yes</button><button class="btn" data-no>Rephrase</button>`;
-    bar.querySelector("[data-yes]").onclick = () => { bar.remove(); sendTurn(ctx, "yes", { confirmToken: frame.pending_token }); };
-    bar.querySelector("[data-no]").onclick = () => { bar.remove(); ctx._composer && ctx._composer.focus(); };
+    const dismiss = () => { bar.remove(); ctx._composer && ctx._composer.focus(); };
+    // gate-choice: a completion "which one do you mean?" gate lists numbered
+    // candidates in frame.text ("1. call the dentist\n2. book the follow-up").
+    // Two or more numbered lines → one button per candidate that answers with
+    // its number; anything else is a plain store-confirmation Yes / Rephrase bar.
+    const choices = [];
+    const choiceRe = /^\s*(\d+)\.\s+(.+?)\s*$/gm;
+    let m;
+    while ((m = choiceRe.exec(frame.text))) choices.push({ n: m[1], title: m[2] });
+    if (choices.length >= 2) {
+      bar.innerHTML =
+        choices
+          .map((c) => `<button class="btn gate-choice" data-n="${esc(c.n)}">${esc(c.title)}</button>`)
+          .join("") +
+        `<button class="btn" data-no>Never mind</button>`;
+      bar.querySelectorAll("[data-n]").forEach((btn) => {
+        btn.onclick = () => {
+          bar.remove();
+          sendTurn(ctx, String(btn.dataset.n), { confirmToken: frame.pending_token });
+        };
+      });
+      bar.querySelector("[data-no]").onclick = dismiss;
+    } else {
+      bar.innerHTML = `<button class="btn btn-primary" data-yes>Yes</button><button class="btn" data-no>Rephrase</button>`;
+      bar.querySelector("[data-yes]").onclick = () => { bar.remove(); sendTurn(ctx, "yes", { confirmToken: frame.pending_token }); };
+      bar.querySelector("[data-no]").onclick = dismiss;
+    }
     b.actions.appendChild(bar);
   }
 }

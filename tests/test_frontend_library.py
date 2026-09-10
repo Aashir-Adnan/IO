@@ -58,6 +58,15 @@ def test_records_row_has_status_toggle():
     assert "record-check" in src
 
 
+def test_completion_gate_renders_numbered_choice_buttons():
+    """The which-one completion gate parses numbered lines out of frame.text
+    and renders one button per candidate (class 'gate-choice')."""
+    src = (FRONTEND / "views" / "conversation.js").read_text()
+    assert "gate-choice" in src
+    assert r"/^\s*(\d+)\.\s+(.+?)\s*$/gm" in src
+    assert "frame.pending_token }" in src
+
+
 def test_mic_and_stt_wiring():
     js = f"""
     import * as mic from {json.dumps((FRONTEND / 'mic.js').as_uri())};
