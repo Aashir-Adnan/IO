@@ -187,6 +187,13 @@ class WebCard(BaseModel):
 Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard | WebCard
 
 
+_KIND_ALIASES = {
+    "todo": "task", "to_do": "task", "task_reminder": "task",
+    "reminder": "task", "reminders": "task",
+    "chores": "chore",
+}
+
+
 def normalize_kind(raw: str) -> str:
     s = (raw or "").lower()
     s = re.sub(r"[ \-]", "_", s)
@@ -195,6 +202,7 @@ def normalize_kind(raw: str) -> str:
     s = s.strip("_")
     s = s[:48]
     s = s.strip("_")
+    s = _KIND_ALIASES.get(s, s)
     return s or "note"
 
 
