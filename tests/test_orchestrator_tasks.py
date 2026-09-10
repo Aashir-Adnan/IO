@@ -49,7 +49,14 @@ def _get(db, rid):
     ("that's done", "done"),
     ("cancel the dentist task", "dropped"),
     ("forget the milk", "dropped"),
+    ("I did the laundry", "done"),
+    ("took care of the dentist appointment", "done"),
     ("I need to buy groceries", None),
+    # A completion refers to something IO already knows about; an indefinite
+    # object is new information, so leave it to the planner.
+    ("I did a 5k run this morning", None),
+    ("I finished a book last night", None),
+    ("set up a meeting with Ali", None),
     ("did I finish the report?", None),
     ("have I finished the report", None),
     ("what did I finish today?", None),

@@ -55,9 +55,13 @@ _DONE_VERB = (r"finished|completed|did|done with|wrapped up|took care of|"
 _MARK_VERB = r"mark(?:ed)?|set|check(?:ed)?|tick(?:ed)?|cross(?:ed)?|scratch(?:ed)?"
 _DROP_VERB = r"cancel(?:l?ed)?|drop(?:ped)?|scrap(?:ped)?|skip(?:ped)?|forget"
 _I_PREFIX = r"(?:i\s+(?:just\s+)?|i(?:'ve|\s+have)\s+(?:just\s+)?)?"
+# A completion refers to something IO already knows about, so the object has to
+# be definite: "I finished the report" closes a task, "I finished a book last
+# night" is new information and belongs to the planner.
+_DEFINITE = r"(?:the|my|our|that|this|those|these|it|them|him|her)\b"
 
 _COMPLETE_DONE = re.compile(
-    rf"^\s*{_I_PREFIX}(?:{_DONE_VERB})\b"
+    rf"^\s*{_I_PREFIX}(?:{_DONE_VERB})\s+(?:up\s+|off\s+|with\s+)?{_DEFINITE}"
     rf"|^\s*(?:i\s+)?(?:{_MARK_VERB})\b.*\b(?:done|complete|completed|finished|off)\b"
     r"|^\s*(?:that'?s|it'?s|this is|those are)\s+(?:all\s+)?"
     r"(?:done|finished|handled|sorted|taken care of)\b",
