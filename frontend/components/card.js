@@ -36,11 +36,32 @@ export function renderCard(card, ctx) {
     }
   } else if (card.type === "tasklist") {
     el.innerHTML = `<div class="tasklist">${card.items.map((it) => `
-      <div class="task-row">
-        ${icon(it.status === "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" })}
+      <div class="task-row" data-id="${it.record_id}">
+        <button class="task-check" aria-pressed="${it.status === "done"}" aria-label="Toggle done">
+          ${icon(it.status === "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" })}
+        </button>
         <span class="task-t${it.status === "done" ? " done" : ""}">${escape(it.title)}</span>
         <span class="mono task-due">${it.due ? when(it.due).toUpperCase() : (it.status || "").toUpperCase()}</span>
       </div>`).join("")}</div>`;
+    if (ctx) {
+      el.querySelectorAll(".task-check").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const row = btn.closest(".task-row");
+          const id = +row.dataset.id;
+          const next = btn.getAttribute("aria-pressed") === "true" ? "open" : "done";
+          row.classList.toggle("done-row", next === "done");
+          row.querySelector(".task-t").classList.toggle("done", next === "done");
+          btn.setAttribute("aria-pressed", String(next === "done"));
+          btn.innerHTML = icon(next === "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
+          try { await ctx.api.editRecord(id, { status: next }); }
+          catch {
+            btn.setAttribute("aria-pressed", String(next !== "done"));
+            btn.innerHTML = icon(next !== "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
+            row.querySelector(".task-t").classList.toggle("done", next !== "done");
+          }
+        });
+      });
+    }
   } else if (card.type === "sources") {
     el.className = "card-sources mono";
     el.innerHTML = `${icon("brain", { size: 13 })}<span>${card.count} ${card.count === 1 ? "MEMORY" : "MEMORIES"} USED</span>` +

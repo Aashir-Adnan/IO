@@ -63,10 +63,12 @@ export function mount(root, ctx) {
     row.className = "record-row";
     row.dataset.id = r.id;
     const glyph = KIND_GLYPH[r.kind] || "circle";
+    const checkable = r.status === "open" || r.status === "done";
     row.innerHTML = `
+      ${checkable ? `<button class="record-check" aria-pressed="${r.status === "done"}" aria-label="Toggle done">${icon(r.status === "done" ? "checkCircle" : "circle", { size: 15 })}</button>` : ""}
       <span class="record-glyph">${icon(glyph, { size: 15 })}</span>
       <div class="record-main">
-        <div class="record-title" contenteditable="plaintext-only" spellcheck="false">${esc(r.title)}</div>
+        <div class="record-title${r.status === "done" ? " done" : ""}" contenteditable="plaintext-only" spellcheck="false">${esc(r.title)}</div>
         <div class="record-meta">
           <span class="record-tag">${esc([r.kind, r.domain].filter(Boolean).join(" · "))}</span>
           <button class="record-when" title="Edit date">${r.when ? whenText(r.when) : "+ date"}</button>
@@ -94,6 +96,20 @@ export function mount(root, ctx) {
         row.querySelector(".record-when").textContent = r.when ? whenText(r.when) : "+ date";
       } catch (e) { row.querySelector(".record-when").textContent = "bad date"; setTimeout(render, 900); }
     };
+
+    const chk = row.querySelector(".record-check");
+    if (chk) chk.addEventListener("click", async () => {
+      const next = chk.getAttribute("aria-pressed") === "true" ? "open" : "done";
+      chk.setAttribute("aria-pressed", String(next === "done"));
+      chk.innerHTML = icon(next === "done" ? "checkCircle" : "circle", { size: 15 });
+      row.querySelector(".record-title").classList.toggle("done", next === "done");
+      try { const u = await ctx.api.editRecord(r.id, { status: next }); r.status = u.status; }
+      catch {
+        chk.setAttribute("aria-pressed", String(next !== "done"));
+        chk.innerHTML = icon(next !== "done" ? "checkCircle" : "circle", { size: 15 });
+        row.querySelector(".record-title").classList.toggle("done", next !== "done");
+      }
+    });
 
     row.querySelectorAll(".record-chip[data-etype]").forEach((c) => {
       c.onclick = () => ctx.openInspector && ctx.openInspector(c.dataset.etype, +c.dataset.id);

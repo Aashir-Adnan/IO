@@ -48,6 +48,16 @@ def test_history_component_exports():
     assert _run(js) == "ok"
 
 
+def test_tasklist_card_has_interactive_checkbox():
+    src = (FRONTEND / "components" / "card.js").read_text()
+    assert "task-check" in src and "editRecord" in src
+
+
+def test_records_row_has_status_toggle():
+    src = (FRONTEND / "views" / "records.js").read_text()
+    assert "record-check" in src
+
+
 def test_mic_and_stt_wiring():
     js = f"""
     import * as mic from {json.dumps((FRONTEND / 'mic.js').as_uri())};

@@ -677,6 +677,13 @@ a:hover { color: var(--color-accent-300); }
 .task-t { flex: 1; font-size: 13px; color: var(--ink); }
 .task-t.done { color: var(--ink-3); text-decoration: line-through; }
 .task-due { color: var(--ink-3); }
+.task-check, .record-check {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+  border-radius: 6px; color: var(--ink-3);
+}
+.task-check[aria-pressed="true"], .record-check[aria-pressed="true"] { color: var(--color-accent); }
+.task-check:hover, .record-check:hover { color: var(--ink); background: var(--fill); }
+.task-t.done, .record-title.done { text-decoration: line-through; color: var(--ink-3); }
 .card-sources {
   display: flex; align-items: center; gap: 6px;
   color: var(--ink-3); background: transparent; box-shadow: none;
