@@ -38,3 +38,20 @@ def test_tasklist_card_emitted_for_mixed_list_with_a_statusful_row(db):
     tasklists = [c for c in cards if isinstance(c, TaskListCard)]
     assert len(tasklists) == 1
     assert [i.record_id for i in tasklists[0].items] == [1]
+
+
+@requires_db
+def test_collection_card_emitted_for_watchlist_answer(db):
+    from io_assistant.db import models as m
+    from io_assistant.models_domain import CollectionCard
+    from io_assistant.query.pipeline import QueryAnswer, RecordRef
+    db.add(m.Collection(kind_slug="watchlist", name="watchlist",
+                        item_noun="movie", synonyms=["watchlist"],
+                        field_hint={"checkable": True}))
+    db.flush()
+    ans = QueryAnswer(text="", shape="markdown", n_rows=2, source_record_ids=[1, 2],
+        list_records=[RecordRef(1, "watchlist", "other", "Dune", "open", None, None),
+                      RecordRef(2, "watchlist", "other", "Barbie", "done", None, None)])
+    cards = query_cards(db, ans)
+    cc = [c for c in cards if isinstance(c, CollectionCard)]
+    assert cc and cc[0].kind_slug == "watchlist" and len(cc[0].items) == 2

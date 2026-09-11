@@ -142,6 +142,15 @@ class TaskListCard(BaseModel):
     items: list[TaskListItem] = Field(default_factory=list)
 
 
+class CollectionCard(BaseModel):
+    type: Literal["collection"] = "collection"
+    name: str
+    item_noun: str | None = None
+    kind_slug: str
+    checkable: bool = False
+    items: list[TaskListItem] = Field(default_factory=list)
+
+
 class SourcesCard(BaseModel):
     type: Literal["sources"] = "sources"
     record_ids: list[int] = Field(default_factory=list)
@@ -195,7 +204,10 @@ class WebCard(BaseModel):
     cached: bool = False
 
 
-Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard | WebCard
+Card = (
+    RecordCard | TaskListCard | CollectionCard | SourcesCard | FilesCard
+    | GalleryCard | WebCard
+)
 
 
 _KIND_ALIASES = {
