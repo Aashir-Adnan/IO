@@ -154,6 +154,41 @@ def doctor() -> None:
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
+@app.command("list")
+def list_(name: str = typer.Argument(None)) -> None:
+    """List your tracked lists, or the items in one."""
+    config = load_config()
+    engine = make_engine(config.database_url)
+    factory = make_session_factory(engine)
+    try:
+        with factory() as s:
+            if name is None:
+                from io_assistant.collections.registry import describe_collections
+                text_out = describe_collections(s)
+                typer.echo(text_out or "No lists yet.")
+            else:
+                from io_assistant.collections.registry import resolve_collection
+                c = resolve_collection(s, name)
+                if c is None:
+                    typer.echo(f"No list matching '{name}'.")
+                    raise typer.Exit(1)
+                from sqlalchemy import select
+
+                from io_assistant.db import models as m
+                rows = s.execute(
+                    select(m.Record)
+                    .where(m.Record.kind == c.kind_slug)
+                    .order_by((m.Record.status == "done").asc(), m.Record.title)
+                ).scalars().all()
+                if not rows:
+                    typer.echo(f"Nothing in {c.name} yet.")
+                for r in rows:
+                    mark = "x" if r.status == "done" else " "
+                    typer.echo(f"[{mark}] {r.title}")
+    finally:
+        engine.dispose()
+
+
 files_app = typer.Typer(help="register and search local files")
 app.add_typer(files_app, name="files")
 
