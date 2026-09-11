@@ -9,7 +9,9 @@ Step kinds:
   The user is telling you something to remember — an event that happened, a
   task/reminder, a plan, a fact, a habit, a detail about a person or place.
   This is the most common case. <EXTRACTION> follows the schema below and
-  describes ONLY this message.
+  describes ONLY this message. If the user is adding to a list named under
+  "Known lists" above, use that list's exact slug as the record "kind" and
+  you may omit the "collection" field (it is already registered).
 
 - {{"kind": "query", "question": "<the question, lightly cleaned up>"}}
   The user is asking about things they told you before — their events, tasks,

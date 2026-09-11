@@ -30,6 +30,10 @@ Rules:
   "what's outstanding" -> target_type "record", status_filter ["open"], and
   leave time_window null. Overdue items surface automatically. Only set a
   time_window when the user names one ("due this week", "tasks for today").
+- If the question is about one of the "Known lists" shown above, set
+  target_type "record" and kind_filter to that list's exact slug. Reuse the
+  slug verbatim — never invent a new one. "what's left to watch" on a
+  checkable list also sets status_filter ["open"].
 - entities: names exactly as the user wrote them, unresolved.
 - semantic_hint: only when wording matters beyond the filters; else null.
 - answer_shape: "markdown" for lists/tables, "diagram" only if a chart/timeline

@@ -19,5 +19,7 @@
   {"utterance": "I finished the deck; when is it due again?", "kinds": ["store", "query"]},
   {"utterance": "hello there", "kinds": ["unknown"]},
   {"utterance": "what's the capital of France?", "kinds": ["unknown"]},
-  {"utterance": "write me an email to my landlord", "kinds": ["unknown"]}
+  {"utterance": "write me an email to my landlord", "kinds": ["unknown"]},
+  {"utterance": "add The Bear to my shows to watch", "kinds": ["store"]},
+  {"utterance": "what's on my watchlist", "kinds": ["query"]}
 ]
