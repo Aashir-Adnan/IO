@@ -10,21 +10,28 @@ runner = CliRunner()
 
 
 @requires_db
-def test_list_shows_collections(monkeypatch, config, engine):
+def test_list_shows_collections_with_counts(monkeypatch, config, engine):
     monkeypatch.setattr("io_assistant.cli.load_config", lambda *a, **k: config)
     with engine.begin() as conn:
-        conn.execute(text(
+        uid = conn.execute(text(
             "INSERT INTO utterances (text, source, captured_at) "
-            "VALUES ('x', 'text', :now)"
-        ), {"now": dt.datetime.now(dt.timezone.utc)})
+            "VALUES ('x', 'text', :now) RETURNING id"
+        ), {"now": dt.datetime.now(dt.timezone.utc)}).scalar_one()
         conn.execute(text(
             "INSERT INTO collections (name, kind_slug, synonyms, field_hint) "
             "VALUES ('watchlist', 'watchlist', '[\"watchlist\"]'::jsonb, "
             "'{\"checkable\": true}'::jsonb)"
         ))
+        conn.execute(text(
+            "INSERT INTO records (kind, title, status, attributes, source_utterance_id) "
+            "VALUES ('watchlist', 'A', 'open', '{}'::jsonb, :uid), "
+            "('watchlist', 'B', 'open', '{}'::jsonb, :uid), "
+            "('watchlist', 'C', 'done', '{}'::jsonb, :uid)"
+        ), {"uid": uid})
     try:
         r = runner.invoke(app, ["list"])
-        assert r.exit_code == 0 and "watchlist" in r.stdout
+        assert r.exit_code == 0
+        assert "watchlist (2 open, 1 done)" in r.stdout
     finally:
         with engine.begin() as conn:
             conn.execute(text(

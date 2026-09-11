@@ -163,9 +163,22 @@ def list_(name: str = typer.Argument(None)) -> None:
     try:
         with factory() as s:
             if name is None:
-                from io_assistant.collections.registry import describe_collections
-                text_out = describe_collections(s)
-                typer.echo(text_out or "No lists yet.")
+                from sqlalchemy import func, select
+
+                from io_assistant.db import models as m
+                rows = s.execute(
+                    select(m.Collection).order_by(m.Collection.created_at)
+                ).scalars().all()
+                if not rows:
+                    typer.echo("No lists yet.")
+                for c in rows:
+                    base = select(func.count()).select_from(m.Record).where(
+                        m.Record.kind == c.kind_slug
+                    )
+                    open_count = s.execute(base.where(m.Record.status == "open")).scalar_one()
+                    done_count = s.execute(base.where(m.Record.status == "done")).scalar_one()
+                    noun = f" — {c.item_noun}" if c.item_noun else ""
+                    typer.echo(f"{c.kind_slug}{noun} ({open_count} open, {done_count} done)")
             else:
                 from io_assistant.collections.registry import resolve_collection
                 c = resolve_collection(s, name)
