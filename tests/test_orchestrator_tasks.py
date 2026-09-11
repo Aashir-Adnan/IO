@@ -210,6 +210,108 @@ def test_complete_record_action_falls_back_to_the_utterance_text(config, db, fak
 
 # --- Task 17: checkable collection items complete like tasks/chores --------
 
+# --- Finding 1: speculative completion for a store step the regex precheck
+# already let through (the task's own verb restated in past tense) ----------
+
+@requires_db
+def test_speculative_completion_closes_task_the_regex_precheck_missed(config, db, fake_backend):
+    """'I called the dentist' restates the task's own verb, not one of the
+    generic _DONE_VERB vocabulary words, so the regex precheck misses it and
+    (on the default split-mode profile) the turn would otherwise be filed as
+    a brand-new duplicate record. Confirm the precheck genuinely misses this
+    phrasing first, so the test exercises the new store-branch fallback and
+    not the existing regex path."""
+    o = Orchestrator(config, session_factory=lambda: None, backend=fake_backend)
+    assert o._complete_precheck("I called the dentist") is None
+
+    rid = _open_task(db, "call the dentist")
+    before = db.query(m.Record).count()
+    fake_backend.set_intent("store")
+    fake_backend.set_extraction(ExtractionResult(records=[ExtractedRecord(
+        kind="note", title="I called the dentist", confidence=0.9)]))
+
+    res = _orch(config, db, fake_backend).handle(
+        "I called the dentist", captured_at=NOW)
+
+    r = _get(db, rid)
+    assert r.status == "done" and r.completed_at is not None
+    assert db.query(m.Record).count() == before   # no new/duplicate record
+    assert res.intent_kind == "ack"
+
+
+@requires_db
+def test_speculative_completion_ambiguous_gates(config, db, fake_backend):
+    a = _open_task(db, "call the dentist")
+    b = _open_task(db, "call the vet")
+    fake_backend.set_intent("store")
+    fake_backend.set_extraction(ExtractionResult(records=[ExtractedRecord(
+        kind="note", title="I called the dentist and vet", confidence=0.9)]))
+
+    res = _orch(config, db, fake_backend).handle(
+        "I called the dentist and vet", captured_at=NOW)
+
+    assert res.intent_kind == "gate" and res.pending is not None
+    assert set(res.pending.candidate_ids) == {a, b}
+    assert _get(db, a).status == "open" and _get(db, b).status == "open"
+
+
+@requires_db
+def test_speculative_completion_does_not_false_positive_on_a_new_note(config, db, fake_backend):
+    """Negative case: an unrelated brand-new note, with unrelated open tasks
+    present, must still store normally rather than close_record matching a
+    false positive."""
+    _open_task(db, "call the dentist")
+    _open_task(db, "buy groceries")
+    before = db.query(m.Record).count()
+    fake_backend.set_intent("store")
+    fake_backend.set_extraction(ExtractionResult(records=[ExtractedRecord(
+        kind="note", title="Sarah's birthday is in March", confidence=0.9)]))
+
+    res = _orch(config, db, fake_backend).handle(
+        "Sarah's birthday is in March", captured_at=NOW)
+
+    assert db.query(m.Record).filter_by(
+        title="Sarah's birthday is in March").count() == 1
+    assert db.query(m.Record).count() == before + 1
+    assert res.intent_kind == "ack"
+
+
+@requires_db
+def test_speculative_completion_skipped_on_gated_store_replay(config, db, fake_backend, monkeypatch):
+    """A replay of an already-gated store (confirmed=True) must not re-run
+    the speculative completion check at all."""
+    import io_assistant.orchestrator as orch_mod
+
+    calls = []
+    orig = orch_mod.Orchestrator._speculative_complete
+
+    def spy(self, *a, **k):
+        calls.append(1)
+        return orig(self, *a, **k)
+
+    monkeypatch.setattr(orch_mod.Orchestrator, "_speculative_complete", spy)
+
+    rid = _open_task(db, "call the dentist")
+    o = _orch(config, db, fake_backend)
+    from io_assistant.orchestrator import PendingStore
+
+    pending = PendingStore(
+        utterance_id=-1,
+        extraction=ExtractionResult(records=[ExtractedRecord(
+            kind="note", title="I called the dentist", confidence=0.9)]),
+        text="I called the dentist", source="text", captured_at=NOW,
+    )
+    # Simulate a real gated utterance row for existing_utterance_id to attach to.
+    u = m.Utterance(text="I called the dentist", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    pending.utterance_id = u.id
+
+    o.handle("I called the dentist", captured_at=NOW, pending=pending)
+
+    assert calls == []   # never invoked on a gated-store replay
+    assert _get(db, rid).status == "open"   # untouched — replay stores, doesn't complete
+
+
 @requires_db
 def test_watched_it_closes_a_checkable_collection_item(config, db, fake_backend):
     """_checkable_kinds() must union in Task 16's checkable_kinds(session), so

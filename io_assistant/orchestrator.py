@@ -395,6 +395,11 @@ class Orchestrator:
                 "store", None, "I couldn't make sense of that to store it.",
                 intent_kind="error",
             )
+        if not confirmed:
+            spec = self._speculative_complete(session, text, now,
+                                              source=source, captured_at=captured_at)
+            if spec is not None:
+                return spec
         n_rec = len(getattr(extraction, "records", []) or [])
         _emit("Saving to memory",
               f"{n_rec} record(s), "
@@ -600,6 +605,43 @@ class Orchestrator:
             )
         return HandleResult("store", None, "I don't see an open task like that.",
                             intent_kind="ack")
+
+    def _speculative_complete(self, session, text, now, *, source,
+                              captured_at) -> HandleResult | None:
+        """Second-chance completion check for phrasing `_complete_precheck`
+        misses (e.g. the task's own verb restated in past tense: "I called
+        the dentist"). Runs only for a turn the regex precheck already let
+        through to `store`. Reuses close_record's existing WRatio
+        floor/margin unchanged, so the false-positive rate matches the
+        primary completion path, not a looser one. Returns None on a clean
+        "none" result so the caller stores the utterance normally — unlike
+        `_try_complete`, this path never swallows an utterance with no
+        match."""
+        from io_assistant.tasks.complete import close_record, set_record_status
+
+        out = close_record(session, text, now,
+                           checkable_kinds=self._checkable_kinds(session),
+                           target_status="done")
+        if out.status == "matched":
+            set_record_status(session, out.record, "done", now)
+            session.add(m.Utterance(text=text, source=source, captured_at=captured_at,
+                                    resolved_intent="store", marker="complete"))
+            session.flush()
+            return HandleResult("store", None, _closed_message("done", out.record),
+                                intent_kind="ack", cards=[_status_card(out.record)])
+        if out.status == "ambiguous":
+            rows = sorted(out.candidates, key=lambda r: r.id)
+            session.add(m.Utterance(text=text, source=source, captured_at=captured_at,
+                                    resolved_intent="store", marker="complete"))
+            session.flush()
+            return HandleResult(
+                "store", None,
+                f"Which one do you mean?\n{_numbered(rows)}",
+                intent_kind="gate",
+                pending=PendingComplete(candidate_ids=[r.id for r in rows],
+                                        target_status="done"),
+            )
+        return None
 
     def _resolve_completion(self, session, pending: PendingComplete,
                             reply_text: str) -> HandleResult:
