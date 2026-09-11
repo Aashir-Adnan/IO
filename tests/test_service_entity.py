@@ -94,6 +94,26 @@ def test_patch_record_status_maintains_completed_at(config, fake_backend, db):
 
 
 @requires_db
+def test_patch_record_status_rejects_bogus_value(config, fake_backend, db):
+    """Finding 4: RecordEditIn.status must be constrained to the three real
+    values — an arbitrary string should 422, not silently persist."""
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    r = m.Record(kind="task", domain="home", title="mop the floor",
+                 status="open", attributes={}, source_utterance_id=u.id)
+    db.add(r); db.flush(); rid = r.id
+
+    app = create_app(config, orchestrator=Orchestrator(
+        config, session_factory=lambda: db, backend=fake_backend),
+        engine=db.get_bind(), conversations=ConversationStore(lambda: db))
+    with TestClient(app) as c:
+        resp = c.patch(f"/record/{rid}", json={"status": "bogus"})
+        assert resp.status_code == 422
+        db.expire_all()
+        assert db.get(m.Record, rid).status == "open"   # unchanged
+
+
+@requires_db
 def test_collections_endpoint_lists_with_counts(config, fake_backend, db):
     u = m.Utterance(text="x", source="text", captured_at=NOW); db.add(u); db.flush()
     db.add(m.Collection(kind_slug="watchlist", name="watchlist", synonyms=["watchlist"], field_hint={"checkable": True}))

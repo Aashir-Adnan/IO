@@ -106,7 +106,7 @@ class RecordEditIn(BaseModel):
     title: str | None = None
     kind: str | None = None
     domain: str | None = None
-    status: str | None = None
+    status: Literal["open", "done", "dropped"] | None = None
     when_phrase: str | None = None   # re-grounded; "" clears the date
 
 
