@@ -329,7 +329,9 @@ class Orchestrator:
             # web couldn't help — fall through to normal planning
 
         _emit("Planning your request")
-        plan = self._planner.plan(text, now, context=history)
+        from io_assistant.collections.registry import routing_preamble
+        decide_ctx = routing_preamble(session) + (history or "") or None
+        plan = self._planner.plan(text, now, context=decide_ctx)
         kinds = ", ".join(dict.fromkeys(s.kind for s in plan.steps)) if plan.steps else "unknown"
         _emit("Plan ready", f"{len(plan.steps) or 1} step(s): {kinds}")
         results = [

@@ -11,16 +11,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from rapidfuzz import fuzz
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from io_assistant.db import models as m
 from io_assistant.models_domain import ExtractedCollection, normalize_kind
 
 __all__ = ["upsert_collection", "describe_collections", "resolve_collection",
-           "checkable_kinds"]
+           "checkable_kinds", "seen_kinds", "routing_preamble"]
 
 _MAX_LINES = 20
 _FUZZY = 82
+_CORE_KINDS = {"event", "task", "chore", "gym_session", "job_meeting", "expense", "note"}
 
 
 def _norm_syn(xs) -> list[str]:
@@ -102,3 +103,30 @@ def checkable_kinds(session) -> set[str]:
         for c in session.execute(select(m.Collection)).scalars().all()
         if (c.field_hint or {}).get("checkable")
     }
+
+
+def seen_kinds(session, *, limit: int = 12) -> list[str]:
+    """Non-core `records.kind` slugs by row count, most common first — cheap
+    reinforcement so even an unregistered ad-hoc list tends to have its slug
+    reused (spec 4.3)."""
+    rows = session.execute(
+        select(m.Record.kind, func.count())
+        .group_by(m.Record.kind)
+        .order_by(func.count().desc())
+    ).all()
+    out = [kind for kind, _ in rows if kind not in _CORE_KINDS]
+    return out[:limit]
+
+
+def routing_preamble(session) -> str:
+    """The known-list vocabulary block prepended to planner/decide context —
+    the registered collections (exact slugs to reuse) plus the raw seen-kinds
+    tally (so an unregistered list still tends to reuse its slug)."""
+    parts = []
+    vocab = describe_collections(session)
+    if vocab:
+        parts.append("Known lists (reuse the exact slug):\n" + vocab)
+    seen = seen_kinds(session)
+    if seen:
+        parts.append("Seen kinds: " + ", ".join(seen))
+    return ("\n\n".join(parts) + "\n\n") if parts else ""

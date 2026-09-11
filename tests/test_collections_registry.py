@@ -2,7 +2,9 @@ import datetime as dt
 
 from io_assistant.collections.registry import (
     upsert_collection, describe_collections, resolve_collection, checkable_kinds,
+    seen_kinds, routing_preamble,
 )
+from io_assistant.db import models as m
 from io_assistant.models_domain import ExtractedCollection
 from tests.conftest import requires_db
 
@@ -53,3 +55,38 @@ def test_describe_and_checkable(db):
     text = describe_collections(db)
     assert "watchlist" in text and "restaurants" in text
     assert checkable_kinds(db) == {"watchlist"}
+
+
+@requires_db
+def test_seen_kinds_drops_core_kinds_and_orders_by_count(db):
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    for _ in range(2):
+        db.add(m.Record(kind="event", title="e", source_utterance_id=u.id))
+    for _ in range(3):
+        db.add(m.Record(kind="giftlist", title="g", source_utterance_id=u.id))
+    db.add(m.Record(kind="watchlist", title="w", source_utterance_id=u.id))
+    db.flush()
+    kinds = seen_kinds(db)
+    assert kinds[0] == "giftlist"
+    assert "event" not in kinds
+    assert "watchlist" in kinds
+
+
+@requires_db
+def test_routing_preamble_empty_when_nothing_registered_or_seen(db):
+    assert routing_preamble(db) == ""
+
+
+@requires_db
+def test_routing_preamble_combines_known_lists_and_seen_kinds(db):
+    upsert_collection(db, kind_slug="watchlist", proposal=_prop(), example_record_id=None, now=NOW)
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    db.add(m.Record(kind="giftlist", title="g", source_utterance_id=u.id))
+    db.flush()
+    text = routing_preamble(db)
+    assert text.startswith("Known lists (reuse the exact slug):")
+    assert "watchlist" in text
+    assert "Seen kinds: giftlist" in text
+    assert text.endswith("\n\n")

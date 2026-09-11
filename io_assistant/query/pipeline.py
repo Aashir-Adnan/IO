@@ -76,8 +76,11 @@ class QueryPipeline:
     def answer(
         self, session, question: str, now: datetime, *, context: str | None = None
     ) -> QueryAnswer:
+        from io_assistant.collections.registry import routing_preamble
+
         embedder = self._embedder
-        plan = Planner(self._backend).run(question, now, context=context)
+        plan_ctx = routing_preamble(session) + (context or "") or None
+        plan = Planner(self._backend).run(question, now, context=plan_ctx)
         _emit("Retrieval plan ready",
               f"{len(plan.subqueries)} subquery(ies), "
               f"target {plan.subqueries[0].target_type if plan.subqueries else '?'}")

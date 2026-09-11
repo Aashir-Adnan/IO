@@ -99,3 +99,25 @@ def test_person_target_rows_carry_the_name(db, config, fake_backend):
     row = next(x for x in fake_backend.last_phrase_rows if x["type"] == "person")
     assert row["title"] == "Priya"
     assert row["notes"] == "ceramics friend"
+
+
+@requires_db
+def test_planner_sees_known_lists_and_seen_kinds_in_context(db, fake_backend, config, stub_embedder):
+    u = m.Utterance(text="x", source="text", captured_at=NOW); db.add(u); db.flush()
+    db.add(m.Collection(kind_slug="watchlist", name="watchlist",
+                        synonyms=["watchlist", "movies to watch"], field_hint={}))
+    for i in range(3):
+        db.add(m.Record(kind="giftlist", title=f"gift {i}", source_utterance_id=u.id))
+    db.flush()
+    # kind_filter matches nothing, so retrieval comes back empty and the
+    # Responder short-circuits without calling backend.phrase() — otherwise
+    # that later call would overwrite FakeBackend.last_context with the
+    # plain (unchanged) `context` it receives, masking the planner's context.
+    fake_backend.set_plan({"subqueries": [{"target_type": "record",
+                                           "kind_filter": ["nonexistent"]}],
+                           "answer_shape": "text"})
+    QueryPipeline(fake_backend, stub_embedder, config.resolver).answer(
+        db, "what's on my watchlist", NOW, context="prior turn")
+    ctx = fake_backend.last_context or ""
+    assert "Known lists" in ctx and "watchlist" in ctx
+    assert "Seen kinds" in ctx and "giftlist" in ctx
