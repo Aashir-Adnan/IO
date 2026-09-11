@@ -4,7 +4,7 @@ import datetime as _dt
 
 from io_assistant.backend.interface import Backend
 
-__all__ = ["Responder", "rows_to_json"]
+__all__ = ["Responder", "rows_to_json", "section_for"]
 
 _EMPTY = "I don't have anything on that yet."
 
@@ -49,6 +49,13 @@ def _due_label(due, now) -> str | None:
     return due.strftime("%a %d %b")
 
 
+def section_for(status: str | None) -> str:
+    """Which side of an open/done split a record row belongs on, so the
+    phrasing model can say "11 to watch, 3 watched" for a checkable list
+    instead of a flat run of rows."""
+    return "done" if status == "done" else "to_do"
+
+
 def rows_to_json(rows: list, now: _dt.datetime | None = None) -> list[dict]:
     if now is None:
         now = _dt.datetime.now(_dt.timezone.utc)
@@ -84,6 +91,8 @@ def rows_to_json(rows: list, now: _dt.datetime | None = None) -> list[dict]:
             v = getattr(obj, attr, None)
             if v is not None:
                 d[attr] = v
+        if d["type"] == "record":
+            d["section"] = section_for(getattr(obj, "status", None))
         attributes = getattr(obj, "attributes", None)
         if isinstance(attributes, dict) and attributes:
             d["attributes"] = attributes

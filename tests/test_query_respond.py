@@ -1,7 +1,7 @@
 import datetime as dt
 import types
 
-from io_assistant.query.respond import Responder, rows_to_json
+from io_assistant.query.respond import Responder, rows_to_json, section_for
 from io_assistant.query.rank import RankedRow
 
 NOW = dt.datetime(2026, 9, 10, 12, 0, tzinfo=dt.timezone.utc)
@@ -99,3 +99,20 @@ def test_rows_to_json_dateless_row_has_no_due_label():
     d = rows_to_json([row], NOW)[0]
     assert d["overdue"] is False
     assert d["due_label"] is None
+
+
+def test_checkable_collection_rows_are_split_open_vs_done():
+    assert section_for("open") == "to_do"
+    assert section_for("done") == "done"
+    assert section_for(None) == "to_do"
+
+
+def test_rows_to_json_adds_section_to_record_rows():
+    row = RankedRow(
+        types.SimpleNamespace(title="film a", kind="watchlist", domain=None,
+                              status="done", occurred_at=None, due_at=None,
+                              created_at=None, name=None, date=None, body=None),
+        "record", "structured", 0.5,
+    )
+    d = rows_to_json([row], NOW)[0]
+    assert d["section"] == "done"
