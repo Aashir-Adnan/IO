@@ -6,8 +6,11 @@ Rules:
 - Do NOT resolve dates - copy the raw phrase into the *_phrase fields.
 - Do NOT list the speaker ("I" / "me" / "my") as a person.
 - Name people/places/items inside each record AND in the top-level arrays.
+- If the sentence adds an item to a list/collection that matches one of the
+  Known lists below, use that list's exact slug as the record "kind" - never
+  invent a new slug for the same list.
 
-Examples (each is one INPUT sentence and its OUTPUT JSON - describe only the
+{context}Examples (each is one INPUT sentence and its OUTPUT JSON - describe only the
 sentence, never copy an example):
 {examples}
 

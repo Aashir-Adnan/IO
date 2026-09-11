@@ -81,10 +81,11 @@ class LocalBackend:
         token = out.strip().upper().split()[0] if out.strip() else ""
         return _INTENTS.get(token, "unknown")
 
-    def extract(self, utterance: str, now: datetime) -> ExtractionResult:
+    def extract(self, utterance: str, now: datetime, *, context: str | None = None) -> ExtractionResult:
         prompt = _load_prompt("extract.txt").format(
             schema=SCHEMA_JSON,
             examples=FEWSHOT,
+            context=render_context(context),
             now=now.isoformat(),
             utterance=utterance,
         )

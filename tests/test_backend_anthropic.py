@@ -83,6 +83,17 @@ def test_extract_caches_stable_prefix(config):
     assert "Arcadian" in user and "EXACTLY these keys" not in user
 
 
+def test_extract_includes_context(config):
+    """Finding 2: the known-lists vocabulary must reach the Anthropic extract
+    call too, not just route/plan/phrase."""
+    c = FakeClient('{"people":[],"places":[],"items":[],"occasions":[],"records":[]}')
+    AnthropicBackend(config, client=c).extract(
+        "add Oppenheimer to my list", dt.datetime.now(dt.timezone.utc),
+        context="Known lists (reuse the exact slug):\n- watchlist")
+    user = c.messages.last_kwargs["messages"][0]["content"]
+    assert "Known lists" in user and "watchlist" in user
+
+
 def test_extract_bad_json_raises(config):
     with pytest.raises(BackendParseError):
         AnthropicBackend(config, client=FakeClient("sorry, no")).extract(

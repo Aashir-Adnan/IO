@@ -70,7 +70,7 @@ class DecidePlanner:
             return Plan(steps=[Step(kind="query", question=text)])
         if intent == "file":
             return Plan(steps=[Step(kind="file", question=text)])
-        return Plan(steps=[Step(kind="store", extraction=self._extractor.run(text, now))])
+        return Plan(steps=[Step(kind="store", extraction=self._extractor.run(text, now, context=context))])
 
     def _combined(self, text: str, now: datetime, *, context: str | None) -> Plan:
         files_enabled = bool(

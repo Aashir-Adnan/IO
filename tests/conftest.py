@@ -147,7 +147,8 @@ class FakeBackend:
         self.calls.append("route")
         return self._intent
 
-    def extract(self, utterance: str, now: datetime) -> ExtractionResult:
+    def extract(self, utterance: str, now: datetime, *, context: str | None = None) -> ExtractionResult:
+        self._ctx(context)
         self.calls.append("extract")
         return self._extraction
 

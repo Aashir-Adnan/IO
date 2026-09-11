@@ -87,7 +87,7 @@ class AnthropicBackend:
         token = out.upper().split()[0] if out else ""
         return _INTENTS.get(token, "unknown")
 
-    def extract(self, utterance: str, now: datetime) -> ExtractionResult:
+    def extract(self, utterance: str, now: datetime, *, context: str | None = None) -> ExtractionResult:
         system = [{
             "type": "text",
             "text": _EXTRACT_SYSTEM,
@@ -95,6 +95,7 @@ class AnthropicBackend:
         }]
         user = (
             f'Assume "now" is {now.isoformat()}.\n'
+            f"{render_context(context)}"
             "Produce the OUTPUT JSON for THIS input only.\n"
             f"INPUT: {utterance}\nOUTPUT:"
         )

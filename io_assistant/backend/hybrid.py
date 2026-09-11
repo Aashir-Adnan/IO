@@ -14,8 +14,8 @@ class HybridBackend:
     def route(self, utterance: str, *, context: str | None = None) -> Intent:
         return self._local.route(utterance, context=context)
 
-    def extract(self, utterance: str, now: datetime) -> ExtractionResult:
-        return self._cloud.extract(utterance, now)
+    def extract(self, utterance: str, now: datetime, *, context: str | None = None) -> ExtractionResult:
+        return self._cloud.extract(utterance, now, context=context)
 
     def plan(
         self, question: str, now: datetime, *, context: str | None = None

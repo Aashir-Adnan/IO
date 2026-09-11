@@ -15,7 +15,7 @@ class FakeBackend:
     def route(self, utterance, *, context=None):
         return self._intent
 
-    def extract(self, utterance, now):
+    def extract(self, utterance, now, *, context=None):
         return self._extraction
 
 
@@ -51,9 +51,28 @@ def test_split_empty_utterance_is_unknown():
 
 def test_extraction_failure_yields_store_step_with_none():
     class Bad(FakeBackend):
-        def extract(self, utterance, now):
+        def extract(self, utterance, now, *, context=None):
             from io_assistant.backend.interface import BackendParseError
             raise BackendParseError("nope")
 
     plan = DecidePlanner(Bad(intent="store")).plan("garble", NOW)
     assert plan.steps[0].kind == "store" and plan.steps[0].extraction is None
+
+
+def test_split_store_passes_context_to_extractor():
+    """Finding 2: the 'known lists' vocabulary must reach the extractor via
+    _split, not just route/plan (routing/query already had it)."""
+    class ContextCapturingBackend(FakeBackend):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.last_context = None
+
+        def extract(self, utterance, now, *, context=None):
+            self.last_context = context
+            return self._extraction
+
+    b = ContextCapturingBackend(intent="store")
+    p = DecidePlanner(b)
+    p.plan("put Oppenheimer on my movies list", NOW,
+          context="Known lists (reuse the exact slug):\n- watchlist")
+    assert b.last_context == "Known lists (reuse the exact slug):\n- watchlist"
