@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from io_assistant.query.compile import (
     _TARGET_MODEL,
+    compile_count,
     compile_structured,
     recency_column,
 )
@@ -27,6 +28,15 @@ class RetrievedRow:
     distance: float | None
 
 
+@dataclass
+class _Count:
+    """A synthetic single-row carrier for `sq.aggregation == "count"` — never
+    a real record, so `id = -1` (a class attribute, shared by every instance)
+    keeps `QueryPipeline._project` from mistaking it for one."""
+    count: int
+    id = -1
+
+
 def retrieve_subquery(
     session,
     embedder,
@@ -34,6 +44,10 @@ def retrieve_subquery(
     entity_ids: dict[str, list[int]],
     now: datetime,
 ) -> list[RetrievedRow]:
+    if sq.aggregation == "count":
+        n = session.execute(compile_count(sq, entity_ids, now)).scalar_one()
+        return [RetrievedRow(_Count(n), sq.target_type, "structured", None)]
+
     model = _TARGET_MODEL[sq.target_type]
     structured = session.execute(
         compile_structured(sq, entity_ids, now)

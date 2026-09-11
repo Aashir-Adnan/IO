@@ -121,3 +121,19 @@ def test_planner_sees_known_lists_and_seen_kinds_in_context(db, fake_backend, co
     ctx = fake_backend.last_context or ""
     assert "Known lists" in ctx and "watchlist" in ctx
     assert "Seen kinds" in ctx and "giftlist" in ctx
+
+
+@requires_db
+def test_count_aggregation_reports_a_number(db, fake_backend, config, stub_embedder):
+    u = m.Utterance(text="x", source="text", captured_at=NOW); db.add(u); db.flush()
+    for i in range(4):
+        db.add(m.Record(kind="watchlist", title=f"film {i}", status="open",
+                        source_utterance_id=u.id))
+    db.flush()
+    fake_backend.set_plan({"subqueries": [
+        {"target_type": "record", "kind_filter": ["watchlist"], "aggregation": "count"}],
+        "answer_shape": "text"})
+    fake_backend.set_answer("You have 4.")
+    ans = QueryPipeline(fake_backend, stub_embedder, config.resolver).answer(
+        db, "how many films on my list", NOW)
+    assert ans.count == 4

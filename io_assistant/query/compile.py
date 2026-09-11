@@ -7,7 +7,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from io_assistant.db import models as m
 from io_assistant.query.plan import SubQuery
 
-__all__ = ["compile_structured", "recency_column"]
+__all__ = ["compile_structured", "compile_count", "recency_column"]
 
 _TARGET_MODEL = {
     "record": m.Record,
@@ -34,11 +34,10 @@ def recency_column(target_type: str):
     return _TARGET_MODEL[target_type].created_at
 
 
-def compile_structured(
-    sq: SubQuery, entity_ids: dict[str, list[int]], now: datetime
-) -> Select:
-    model = _TARGET_MODEL[sq.target_type]
-    recency = recency_column(sq.target_type)
+def _conds(sq: SubQuery, entity_ids: dict[str, list[int]]) -> list:
+    """The kind/domain/status/entity filter conditions shared by
+    `compile_structured` and `compile_count`. Never touches time — the
+    time-window + roll-forward OR-clause is each caller's own concern."""
     conds = []
 
     if sq.target_type == "record":
@@ -57,9 +56,20 @@ def compile_structured(
                     .exists()
                 )
     else:
+        model = _TARGET_MODEL[sq.target_type]
         ids = entity_ids.get(sq.target_type) or []
         if ids:
             conds.append(model.id.in_(ids))
+
+    return conds
+
+
+def compile_structured(
+    sq: SubQuery, entity_ids: dict[str, list[int]], now: datetime
+) -> Select:
+    model = _TARGET_MODEL[sq.target_type]
+    recency = recency_column(sq.target_type)
+    conds = _conds(sq, entity_ids)
 
     # Read-time roll-forward: when a query explicitly asks for open records, an
     # open task whose due date has passed is always in-window — an overdue task
@@ -95,3 +105,47 @@ def compile_structured(
     if conds:
         stmt = stmt.where(and_(*conds))
     return stmt.order_by(recency.desc()).limit(_LIMIT)
+
+
+def compile_count(
+    sq: SubQuery, entity_ids: dict[str, list[int]], now: datetime
+) -> Select:
+    """A `SELECT count(*)` sharing `compile_structured`'s kind/domain/status/
+    entity filters via `_conds`. The time-window + roll-forward OR-clause is
+    copied rather than shared through `_conds` — see compile_structured for
+    the roll-forward rationale — so a "how many tasks are due" count still
+    surfaces an overdue open task the way the list view does."""
+    model = _TARGET_MODEL[sq.target_type]
+    recency = recency_column(sq.target_type)
+    conds = _conds(sq, entity_ids)
+
+    open_rollforward = (
+        sq.target_type == "record"
+        and sq.status_filter is not None
+        and "open" in sq.status_filter
+    )
+
+    if sq.time_window is not None:
+        window = []
+        if sq.time_window.start is not None:
+            window.append(recency >= sq.time_window.start)
+        if sq.time_window.end is not None:
+            window.append(recency <= sq.time_window.end)
+        if window:
+            if open_rollforward:
+                conds.append(
+                    or_(
+                        and_(*window),
+                        and_(
+                            m.Record.status == "open",
+                            m.Record.due_at <= now,
+                        ),
+                    )
+                )
+            else:
+                conds.append(and_(*window))
+
+    stmt = select(func.count()).select_from(model)
+    if conds:
+        stmt = stmt.where(and_(*conds))
+    return stmt

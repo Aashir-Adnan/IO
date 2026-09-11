@@ -11,8 +11,8 @@ from io_assistant.query.entities import resolve_query_entities
 from io_assistant.query.planner import Planner
 from io_assistant.query.rank import rank
 from io_assistant.query.recur import expand_recurrences
-from io_assistant.query.respond import Responder
-from io_assistant.query.retrieve import retrieve_subquery
+from io_assistant.query.respond import Responder, rows_to_json
+from io_assistant.query.retrieve import _Count, retrieve_subquery
 from io_assistant.progress import emit as _emit
 from io_assistant.resolve.resolver import EntityResolver
 
@@ -39,6 +39,7 @@ class QueryAnswer:
     n_rows: int
     source_record_ids: list[int] = field(default_factory=list)
     list_records: list[RecordRef] = field(default_factory=list)
+    count: int | None = None
 
 
 def _project(session, rows) -> list[RecordRef]:
@@ -107,15 +108,37 @@ class QueryPipeline:
         expanded.sort(key=lambda r: r.score, reverse=True)
         final = expanded[:_TOP_N]
 
-        _emit("Writing the answer", f"{len(final)} row(s) matched")
-        text = Responder(self._backend).run(
-            question, final, plan.answer_shape, now=now, context=context
-        )
-        record_refs = _project(session, final)
+        # A "count" subquery contributes one synthetic _Count row instead of
+        # real records — pull the number out and keep it off the rows the
+        # Responder/`_project` see.
+        count: int | None = None
+        data_rows = []
+        for r in final:
+            if isinstance(getattr(r, "obj", None), _Count):
+                count = r.obj.count
+            else:
+                data_rows.append(r)
+
+        _emit("Writing the answer", f"{len(data_rows)} row(s) matched")
+        if count is not None:
+            # The phrasing model states the number, not counts rows itself —
+            # Responder.run's "no rows -> empty answer" short-circuit would
+            # otherwise fire here since a count subquery carries no list rows.
+            count_question = f"{question} (there are {count} matching items)"
+            text = self._backend.phrase(
+                count_question, rows_to_json(data_rows, now), plan.answer_shape,
+                context=context,
+            )
+        else:
+            text = Responder(self._backend).run(
+                question, data_rows, plan.answer_shape, now=now, context=context
+            )
+        record_refs = _project(session, data_rows)
         return QueryAnswer(
             text=text,
             shape=plan.answer_shape,
-            n_rows=len(final),
+            n_rows=len(data_rows),
             source_record_ids=[r.record_id for r in record_refs],
             list_records=record_refs,
+            count=count,
         )

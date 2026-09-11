@@ -3,7 +3,7 @@ import datetime as dt
 from tests.conftest import requires_db
 from io_assistant.db import models as m
 from io_assistant.query.plan import SubQuery, TimeWindow
-from io_assistant.query.compile import compile_structured
+from io_assistant.query.compile import compile_count, compile_structured
 
 NOW = dt.datetime(2026, 9, 8, 12, 0, tzinfo=dt.timezone.utc)
 EMPTY = {"person": [], "place": [], "item": [], "occasion": []}
@@ -102,3 +102,22 @@ def test_compile_entity_link_exists(db):
         sq, {"person": [p.id], "place": [], "item": [], "occasion": []}, NOW
     )).scalars().all()
     assert {r.title for r in rows} == {"with nafay"}
+
+
+@requires_db
+def test_compile_count_matches_the_same_filters(db):
+    uid = _utt(db)
+    db.add_all([
+        m.Record(kind="watchlist", title="film a", status="open", attributes={},
+                 source_utterance_id=uid),
+        m.Record(kind="watchlist", title="film b", status="open", attributes={},
+                 source_utterance_id=uid),
+        m.Record(kind="watchlist", title="film c", status="done", attributes={},
+                 source_utterance_id=uid),
+        m.Record(kind="task", title="unrelated", attributes={},
+                 source_utterance_id=uid),
+    ])
+    db.flush()
+    sq = SubQuery(target_type="record", kind_filter=["watchlist"])
+    n = db.execute(compile_count(sq, EMPTY, NOW)).scalar_one()
+    assert n == 3
