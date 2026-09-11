@@ -394,6 +394,52 @@ one commit. **Build**: `.\dev.ps1 build` OK → `dist/IO/IO.exe` (24.8 MB).
 
 ---
 
+## Tasks & Collections — implemented (2026-09-10/11, branch `io-window-glass`)
+
+All 26 tasks / 5 phases done (Groups A-K), task-reviewed group by group,
+final full-suite check green. Ledger with every deviation, review finding,
+and fix round: `.superpowers/sdd/2026-09-10-tasks-and-collections/progress.md`.
+New knowledge doc `.claude/knowledge/tasks-and-collections.md` (the
+authoritative write-up — read it before touching completion/roll-forward/
+collections code); `query-pipeline.md` and `data-model.md` updated in place.
+
+- **Completion**: `io_assistant/tasks/complete.py` (`set_record_status` — the
+  sole `status`/`completed_at` writer; `close_record` — pure-Python
+  rapidfuzz match, no model). Orchestrator precheck regex +
+  `complete_record` capability (combined-decide) both funnel into it; an
+  ambiguous match gates on `PendingComplete`, resolved next turn by ordinal/
+  fuzzy pick in Python. `records.completed_at` (migration 0008). Interactive
+  checkbox in `card.js`/`records.js` → `PATCH /record/{id}`.
+- **Default-today + roll-forward**: a bare `task`/`chore` with no date
+  defaults `due_at = start_of_day(now)` unless "someday"-phrased
+  (`resolve/dates.py::is_someday_phrase`); `query/compile.py` OR-clause keeps
+  an overdue open record in-window regardless of the query's time window
+  (read-time, no daily job); `rank.py` gives overdue open records a +0.2
+  score bump; `respond.py` adds `overdue`/`due_label` to every row.
+- **Collections registry**: migration 0009 `collections` table +
+  `io_assistant/collections/registry.py` (`upsert_collection`,
+  `describe_collections`, `resolve_collection`, `checkable_kinds`,
+  `seen_kinds`, `routing_preamble`). The extraction model proposes a list
+  descriptor once per novel kind (`ExtractedRecord.collection`); the writer
+  upserts it and defaults checkable-collection items to `status="open"`.
+  `routing_preamble` is injected into both the query planner context and the
+  decide/plan context so a registered list's slug is reused instead of
+  fragmenting.
+- **Surfaces**: `CollectionCard` (replaces the generic `TaskListCard` when
+  every returned row belongs to one registered collection), `GET
+  /collections`, records-browser filter chips, `io list` / `io list <name>`
+  CLI (read-only). `aggregation: "count"` compiled end-to-end
+  (`compile_count` → synthetic `_Count` row → `pop_count` before ranking →
+  `QueryAnswer.count`, phrased via `Responder.run(..., force=True)`).
+
+**Full suite: 501 pass / 11 skip / 1 deselected** (`test_service_standby.py::
+test_standby_panel` — the pre-existing `io_test` chip-data pollution fail,
+unrelated to this feature). Deferred backlog consolidated into
+`.claude/state/backlog.md` under "Tasks & Collections follow-ups". Not yet
+re-verified live against the running desktop app in this session (see backlog).
+
+---
+
 ## Tasks & Collections — spec written (2026-09-10, branch `io-window-glass`)
 
 Spec `docs/superpowers/specs/2026-09-10-tasks-and-collections-design.md`

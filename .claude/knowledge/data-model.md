@@ -34,6 +34,22 @@ values, NEVER a new table.**
 `record_occasions`, `occasion_people`. Each is `(record_id|occasion_id,
 entity_id, role text null)`.
 
+**`collections` (migration 0009)** — a learned descriptor for an ad-hoc
+personal list (movies to watch, books to read, gift ideas), one row per
+distinct `records.kind` the model has flagged as a list. Columns: `id`,
+`name text` (display name), `kind_slug text unique` (the `records.kind` these
+items share), `item_noun text null` ("movie or show", "book"),
+`synonyms jsonb` (lowercased, deduped phrasings the user might say),
+`field_hint jsonb` (`{"checkable": bool}` today — whether items have an
+open/done state; the `fields` list from the spec is advisory-only, not typed),
+`example_record_id fk -> records.id null on delete set null`, `created_at`,
+`updated_at`. Owned entirely by `io_assistant/collections/registry.py`
+(`upsert_collection`/`describe_collections`/`resolve_collection`/
+`checkable_kinds`/`seen_kinds`/`routing_preamble`) — the extraction model only
+*proposes* one via `ExtractedRecord.collection: ExtractedCollection | None`;
+Python decides identity (dedup by `kind_slug`, union synonyms). See
+`.claude/knowledge/tasks-and-collections.md`.
+
 **Indexing** — HNSW index on every `embedding` column (people, places, items,
 occasions, records); b-tree on every foreign key and every timestamp
 (`records.occurred_at`, `records.due_at`, `utterances.captured_at`,

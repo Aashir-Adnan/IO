@@ -1,5 +1,40 @@
 # Completed (newest first)
 
+## 2026-09-10/11 — Tasks & Collections
+Branch `io-window-glass`. Spec `docs/superpowers/specs/
+2026-09-10-tasks-and-collections-design.md`, plan `docs/superpowers/plans/
+2026-09-10-tasks-and-collections.md` (26 tasks, 5 phases, groups A-K). Full
+ledger with every deviation/review finding: `.superpowers/sdd/
+2026-09-10-tasks-and-collections/progress.md`. Closes the two gaps the spec
+named: tasks never closed themselves, and ad-hoc lists fragmented across
+differently-worded kinds.
+- **Phase 1 — completion**: `io_assistant/tasks/complete.py`
+  (`set_record_status` the sole status/`completed_at` writer; `close_record`
+  pure rapidfuzz match, no model). Orchestrator regex precheck +
+  `complete_record` capability (combined decide) both funnel into it;
+  ambiguous match gates on `PendingComplete`, resolved next turn in Python
+  (ordinal/fuzzy pick). Migration 0008 `records.completed_at`. Interactive
+  checkbox (`card.js`/`records.js` → `PATCH /record/{id}`).
+- **Phase 2 — default-today + roll-forward**: bare `task`/`chore` with no
+  date defaults to due-today (`resolve/dates.py::is_someday_phrase` opts a
+  task out); `query/compile.py` OR-clause keeps an overdue open record
+  in-window at read time (no daily job); `rank.py` overdue score bump;
+  `respond.py` adds `overdue`/`due_label` to every row.
+- **Phase 3 — collections registry**: migration 0009 `collections` table +
+  `io_assistant/collections/registry.py`. Extraction model proposes a list
+  descriptor once per novel kind; writer upserts + defaults checkable items
+  to `status="open"`.
+- **Phase 4 — collections-aware routing**: `routing_preamble` injected into
+  both the query planner and decide/plan contexts so a registered list's
+  slug is reused; `aggregation: "count"` compiled end-to-end.
+- **Phase 5 — surfaces**: `CollectionCard`, `GET /collections`,
+  records-browser filter chips, `io list` / `io list <name>` CLI.
+- New knowledge doc `.claude/knowledge/tasks-and-collections.md`;
+  `query-pipeline.md` / `data-model.md` updated. Deferred items consolidated
+  into `.claude/state/backlog.md` ("Tasks & Collections follow-ups").
+Full suite: **501 pass / 11 skip / 1 deselected** (the pre-existing
+`test_standby_panel` chip-data fail deselected, unrelated).
+
 ## 2026-09-08 — Phase 2B.1: full-featured bundle + UI shell polish
 Branch `io-ui-shell-polish`. Plan `…-io-phase-2b1-full-bundle.md`.
 **Bundle:** `io.spec` now bundles voice (piper/faster_whisper/sounddevice/
