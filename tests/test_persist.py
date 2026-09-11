@@ -7,7 +7,7 @@ from io_assistant.persist.writer import persist_store, PersistError
 from io_assistant.resolve.resolver import EntityResolver
 from io_assistant.models_domain import (
     ExtractionResult, ExtractedPerson, ExtractedPlace, ExtractedItem,
-    ExtractedRecord, ExtractedOccasion)
+    ExtractedRecord, ExtractedOccasion, ExtractedCollection)
 from io_assistant.db import models as m
 
 
@@ -272,6 +272,40 @@ def test_task_with_explicit_due_phrase_keeps_it(db, config):
         kind="task", title="file taxes", due_phrase="tomorrow", confidence=0.9))
     rec = db.get(m.Record, out.record_ids[0])
     assert rec.due_at is not None and rec.due_at != start_of_day(NOW)
+
+
+@requires_db
+def test_storing_a_watchlist_item_registers_the_collection(db, config):
+    """A record with a proposed collection descriptor: the writer upserts the
+    collections row (Task 16's upsert_collection) with example_record_id set
+    to the new record, and — since the proposal says checkable — the record's
+    status defaults to "open"."""
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="watchlist", title="Oppenheimer", confidence=0.9,
+        collection=ExtractedCollection(name="watchlist", item_noun="movie",
+            synonyms=["movies to watch"], checkable=True)))
+    assert not out.gated
+    row = db.get(m.Record, out.record_ids[0])
+    assert row.status == "open"
+    c = db.query(m.Collection).filter_by(kind_slug="watchlist").one()
+    assert c.example_record_id == row.id
+
+
+@requires_db
+def test_second_item_in_a_known_checkable_collection_also_defaults_open(db, config):
+    """Once a collection is registered as checkable, later items whose
+    extraction omits the collection descriptor (the model only proposes it on
+    the first item of a list) still default to status="open" via
+    checkable_kinds(session)."""
+    db.add(m.Collection(kind_slug="watchlist", name="watchlist",
+                        synonyms=["watchlist", "movies to watch"],
+                        field_hint={"checkable": True}))
+    db.flush()
+    out = _persist_rec(db, config, ExtractedRecord(
+        kind="watchlist", title="Dune Part Two", confidence=0.9))
+    assert not out.gated
+    row = db.get(m.Record, out.record_ids[0])
+    assert row.status == "open"
 
 
 @requires_db

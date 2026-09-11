@@ -561,9 +561,8 @@ class Orchestrator:
         return None
 
     def _checkable_kinds(self, session) -> set[str]:
-        kinds = {"task", "chore"}
-        # Task 17 adds: kinds |= checkable_kinds(session)
-        return kinds
+        from io_assistant.collections.registry import checkable_kinds
+        return {"task", "chore"} | checkable_kinds(session)
 
     def _try_complete(self, session, text, now, *, source, captured_at,
                       phrase: str | None = None) -> HandleResult:

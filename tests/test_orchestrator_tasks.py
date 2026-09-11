@@ -206,3 +206,25 @@ def test_complete_record_action_falls_back_to_the_utterance_text(config, db, fak
         Step(kind="action", action="complete_record", args={})]))
     _orch(config, db, fake_backend).handle("the plants", captured_at=NOW)
     assert _get(db, rid).status == "done"
+
+
+# --- Task 17: checkable collection items complete like tasks/chores --------
+
+@requires_db
+def test_watched_it_closes_a_checkable_collection_item(config, db, fake_backend):
+    """_checkable_kinds() must union in Task 16's checkable_kinds(session), so
+    a completion phrase closes a watchlist item the same way it closes a
+    task/chore. (The existing pre-check verb list doesn't recognise "watched"
+    as a done-verb — orthogonal to this task's scope — so this uses "mark ...
+    done" phrasing, which the pre-check already matches.)"""
+    u = m.Utterance(text="x", source="text", captured_at=NOW)
+    db.add(u); db.flush()
+    c = m.Collection(kind_slug="watchlist", name="watchlist",
+                     synonyms=["watchlist", "movies to watch"],
+                     field_hint={"checkable": True})
+    r = m.Record(kind="watchlist", title="Dune Part Two", status="open",
+                 source_utterance_id=u.id)
+    db.add_all([c, r]); db.flush()
+    res = _orch(config, db, fake_backend).handle(
+        "mark Dune Part Two done", captured_at=NOW)
+    assert _get(db, r.id).status == "done" and res.intent_kind == "ack"

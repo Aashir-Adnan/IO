@@ -232,14 +232,20 @@ def _write(
         session.flush()
         occasion_ids[occ.name.lower()] = obj.id
 
+    from io_assistant.collections.registry import (
+        checkable_kinds as _checkable_kinds,
+        upsert_collection,
+    )
+
     record_ids: list[int] = []
     for rec in extraction.records:
         kind = normalize_kind(rec.kind)
-        status = (
-            "open"
-            if kind in _STATUS_KINDS and rec.status is None
-            else rec.status
+        checkable = (
+            kind in _STATUS_KINDS
+            or kind in _checkable_kinds(session)
+            or (rec.collection is not None and rec.collection.checkable)
         )
+        status = "open" if checkable and rec.status is None else rec.status
         assigned_by_id = None
         if rec.assigned_by:
             assigned_by_id = _ensure("person", rec.assigned_by)
@@ -277,6 +283,15 @@ def _write(
         session.add(row)
         session.flush()
         record_ids.append(row.id)
+
+        if rec.collection is not None:
+            upsert_collection(
+                session,
+                kind_slug=kind,
+                proposal=rec.collection,
+                example_record_id=row.id,
+                now=now,
+            )
 
         for pname in rec.people:
             pid = _ensure("person", pname)
