@@ -62,9 +62,9 @@
     try "what's the news on Korea", "USD to PKR", "track the bitcoin price",
     "USD to PKR vs yesterday". First real SearXNG contact — the `settings.yml`
     JSON-format + engine list may need tuning.
-  - `query/compile.py` — actually compile the parsed `aggregation` (`latest`/
-    `count`) so Tier B deltas go through the general query pipeline, not just
-    `poller.delta_reading`.
+  - `query/compile.py` — actually compile the parsed `aggregation` (`latest`)
+    so Tier B deltas go through the general query pipeline, not just
+    `poller.delta_reading`. (`count` is compiled — Tasks & Collections Group H.)
   - A `regex`-type catalogue entry (petrol PKR needs a stable source page).
   - Cloud search provider slot (`[web].provider` beyond `searxng`/`none`).
   - `io web` / `io track` CLI; a `[web]` toggle in frontend settings.

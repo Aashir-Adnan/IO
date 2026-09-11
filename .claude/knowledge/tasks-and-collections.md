@@ -18,7 +18,8 @@ review finding: `.superpowers/sdd/2026-09-10-tasks-and-collections/progress.md`.
   `status="open"` record whose `kind` is in `checkable_kinds`. One SELECT, no
   model, no embedder, never mutates. `CloseOutcome.status` is `"matched"`
   (top score ≥ 72 and ≥12 ahead of #2 — return `.record`), `"ambiguous"`
-  (score ≥ 55 — return up to 3 `.candidates`, id-ordered), or `"none"`.
+  (score ≥ 55 — return up to 3 `.candidates`, in descending fuzz-score
+  order), or `"none"`.
 
 Two entry points reach it, both in `io_assistant/orchestrator.py`:
 
@@ -40,7 +41,10 @@ Two entry points reach it, both in `io_assistant/orchestrator.py`:
 checkable_kinds(session)` (the registry — see below), so a watchlist item
 closes through the same path.
 
-**Ambiguity gate**: `_try_complete` returns `intent_kind="gate"` with a
+**Ambiguity gate**: `_try_complete` re-sorts `out.candidates` from
+score-order to **id order** (oldest-first — so "the first one" means the
+first one listed, and the numbering is stable across calls) before
+numbering them for the gate, then returns `intent_kind="gate"` with a
 `PendingComplete(candidate_ids, target_status)` and a numbered prose list.
 The next turn — matched via `isinstance(pending, PendingComplete)` in
 `_handle_in_session` — resolves **in Python**: `_resolve_completion` re-checks
