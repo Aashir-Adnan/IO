@@ -12,6 +12,25 @@ function when(iso) {
     : d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+function wireChecks(root, ctx) {
+  root.querySelectorAll(".task-check").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest(".task-row");
+      const id = +row.dataset.id;
+      const next = btn.getAttribute("aria-pressed") === "true" ? "open" : "done";
+      row.querySelector(".task-t").classList.toggle("done", next === "done");
+      btn.setAttribute("aria-pressed", String(next === "done"));
+      btn.innerHTML = icon(next === "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
+      try { await ctx.api.editRecord(id, { status: next }); }
+      catch {
+        btn.setAttribute("aria-pressed", String(next !== "done"));
+        btn.innerHTML = icon(next !== "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
+        row.querySelector(".task-t").classList.toggle("done", next !== "done");
+      }
+    });
+  });
+}
+
 export function renderCard(card, ctx) {
   const el = document.createElement("div");
   el.className = "card card-" + card.type;
@@ -44,22 +63,24 @@ export function renderCard(card, ctx) {
         <span class="mono task-due">${it.due ? when(it.due).toUpperCase() : (it.status || "").toUpperCase()}</span>
       </div>`).join("")}</div>`;
     if (ctx) {
-      el.querySelectorAll(".task-check").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const row = btn.closest(".task-row");
-          const id = +row.dataset.id;
-          const next = btn.getAttribute("aria-pressed") === "true" ? "open" : "done";
-          row.classList.toggle("done-row", next === "done");
-          row.querySelector(".task-t").classList.toggle("done", next === "done");
-          btn.setAttribute("aria-pressed", String(next === "done"));
-          btn.innerHTML = icon(next === "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
-          try { await ctx.api.editRecord(id, { status: next }); }
-          catch {
-            btn.setAttribute("aria-pressed", String(next !== "done"));
-            btn.innerHTML = icon(next !== "done" ? "checkCircle" : "circle", { size: 14, cls: "task-i" });
-            row.querySelector(".task-t").classList.toggle("done", next !== "done");
-          }
-        });
+      wireChecks(el, ctx);
+    }
+  } else if (card.type === "collection") {
+    el.className = "card card-collection";
+    el.innerHTML = `
+      <div class="cc-head">${escape(card.name)}<span class="mono">${card.items.length}</span></div>
+      <div class="cc-list">${card.items.map((it) => `
+        <div class="task-row" data-id="${it.record_id}">
+          ${card.checkable ? `<button class="task-check" aria-pressed="${it.status === "done"}" aria-label="Toggle">${icon(it.status === "done" ? "checkCircle" : "circle", { size: 14 })}</button>` : `<span class="cc-dot"></span>`}
+          <span class="task-t${it.status === "done" ? " done" : ""}">${escape(it.title)}</span>
+        </div>`).join("")}</div>
+      <form class="cc-add"><input type="text" placeholder="Add ${escape(card.item_noun || "item")}" /></form>`;
+    if (ctx) {
+      wireChecks(el, ctx);
+      el.querySelector(".cc-add").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = e.target.querySelector("input").value.trim();
+        if (v && ctx.onAsk) { ctx.onAsk(`add ${v} to my ${card.name}`); e.target.reset(); }
       });
     }
   } else if (card.type === "sources") {

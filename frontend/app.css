@@ -684,6 +684,12 @@ a:hover { color: var(--color-accent-300); }
 .task-check[aria-pressed="true"], .record-check[aria-pressed="true"] { color: var(--color-accent); }
 .task-check:hover, .record-check:hover { color: var(--ink); background: var(--fill); }
 .task-t.done, .record-title.done { text-decoration: line-through; color: var(--ink-3); }
+.card-collection { display: flex; flex-direction: column; gap: 8px; }
+.cc-head { display: flex; justify-content: space-between; font-weight: 500; }
+.cc-head .mono { color: var(--ink-3); }
+.cc-list { display: flex; flex-direction: column; gap: 4px; }
+.cc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); flex: none; margin: 0 8px; }
+.cc-add input { width: 100%; border: 0; background: var(--fill-2); border-radius: 8px; padding: 8px 10px; color: var(--ink); font: inherit; }
 .card-sources {
   display: flex; align-items: center; gap: 6px;
   color: var(--ink-3); background: transparent; box-shadow: none;

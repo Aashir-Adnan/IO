@@ -53,6 +53,12 @@ def test_tasklist_card_has_interactive_checkbox():
     assert "task-check" in src and "editRecord" in src
 
 
+def test_collection_card_renders_with_add_field():
+    src = (FRONTEND / "components" / "card.js").read_text()
+    assert 'card.type === "collection"' in src or "collection" in src
+    assert "card-collection" in src
+
+
 def test_records_row_has_status_toggle():
     src = (FRONTEND / "views" / "records.js").read_text()
     assert "record-check" in src

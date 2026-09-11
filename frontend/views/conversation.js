@@ -105,6 +105,7 @@ export async function mount(root, ctx) {
     addProgress(thread, f.stage, f.detail);
     ctx._composer && ctx._composer.setStatus(f.stage);
   };
+  ctx.onAsk = (t) => sendTurn(ctx, t);
 
   const composer = Composer(root.querySelector(".convo-composer"), {
     compact: true,
