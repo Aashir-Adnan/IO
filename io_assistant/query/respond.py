@@ -91,8 +91,13 @@ def rows_to_json(rows: list, now: _dt.datetime | None = None) -> list[dict]:
             v = getattr(obj, attr, None)
             if v is not None:
                 d[attr] = v
-        if d["type"] == "record":
-            d["section"] = section_for(getattr(obj, "status", None))
+        # Only when the record actually carries a status — a plain past
+        # event or note has `status=None` (nullable, no default) and must
+        # not be silently labelled "to_do"; checkable-collection items
+        # always have `status="open"`/"done" (persist/writer.py), so the
+        # sectioning Task 21 targets is unaffected.
+        if d["type"] == "record" and getattr(obj, "status", None) is not None:
+            d["section"] = section_for(obj.status)
         attributes = getattr(obj, "attributes", None)
         if isinstance(attributes, dict) and attributes:
             d["attributes"] = attributes
@@ -119,8 +124,14 @@ class Responder:
         *,
         now: _dt.datetime | None = None,
         context: str | None = None,
+        force: bool = False,
     ) -> str:
-        if not rows:
+        # A count answer legitimately has zero list rows (a pure "count"
+        # subquery never returns real rows, only the number) but still needs
+        # a phrase call — `force=True` skips the empty-rows short-circuit so
+        # QueryPipeline's count path can go through here instead of calling
+        # `backend.phrase` directly.
+        if not rows and not force:
             return _EMPTY
         return self._backend.phrase(
             question, rows_to_json(rows, now), shape, context=context

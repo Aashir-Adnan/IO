@@ -116,3 +116,18 @@ def test_rows_to_json_adds_section_to_record_rows():
     )
     d = rows_to_json([row], NOW)[0]
     assert d["section"] == "done"
+
+
+def test_rows_to_json_omits_section_for_status_less_records():
+    """Regression: a plain past event or note has status=None (nullable, no
+    default) — it must not get labelled "to_do" just because `section_for`
+    treats "not done" as "to_do". Only records that actually carry a status
+    (tasks, checkable-collection items) get a "section" key at all."""
+    row = RankedRow(
+        types.SimpleNamespace(title="dinner with Nafay", kind="event", domain="social",
+                              status=None, occurred_at=NOW, due_at=None,
+                              created_at=None, name=None, date=None, body=None),
+        "record", "structured", 0.5,
+    )
+    d = rows_to_json([row], NOW)[0]
+    assert "section" not in d

@@ -11,8 +11,8 @@ from io_assistant.query.entities import resolve_query_entities
 from io_assistant.query.planner import Planner
 from io_assistant.query.rank import rank
 from io_assistant.query.recur import expand_recurrences
-from io_assistant.query.respond import Responder, rows_to_json
-from io_assistant.query.retrieve import _Count, retrieve_subquery
+from io_assistant.query.respond import Responder
+from io_assistant.query.retrieve import pop_count, retrieve_subquery
 from io_assistant.progress import emit as _emit
 from io_assistant.resolve.resolver import EntityResolver
 
@@ -89,11 +89,20 @@ class QueryPipeline:
         groups = []
         starts: list[datetime] = []
         ends: list[datetime] = []
+        count: int | None = None
         for sq in plan.subqueries:
             resolver = EntityResolver(session, embedder, self._cfg)
             _emit("Resolving people & places", ", ".join(sq.entities) or "—")
             ids = resolve_query_entities(resolver, session, sq.entities)
-            groups.append(retrieve_subquery(session, embedder, sq, ids, now))
+            rows = retrieve_subquery(session, embedder, sq, ids, now)
+            # A "count" subquery's result is a synthetic `_Count` carrier, not
+            # a real row — pop it out here, before `rank()`, so it never gets
+            # scored (it has no date and would rank like a very old row),
+            # merged, or recurrence-expanded. See retrieve.py::pop_count.
+            c, rows = pop_count(rows)
+            if c is not None:
+                count = c
+            groups.append(rows)
             if sq.time_window is not None:
                 if sq.time_window.start is not None:
                     starts.append(sq.time_window.start)
@@ -106,28 +115,18 @@ class QueryPipeline:
         hi = max(ends, default=None)
         expanded = expand_recurrences(ranked, lo, hi, now=now)
         expanded.sort(key=lambda r: r.score, reverse=True)
-        final = expanded[:_TOP_N]
-
-        # A "count" subquery contributes one synthetic _Count row instead of
-        # real records — pull the number out and keep it off the rows the
-        # Responder/`_project` see.
-        count: int | None = None
-        data_rows = []
-        for r in final:
-            if isinstance(getattr(r, "obj", None), _Count):
-                count = r.obj.count
-            else:
-                data_rows.append(r)
+        data_rows = expanded[:_TOP_N]
 
         _emit("Writing the answer", f"{len(data_rows)} row(s) matched")
         if count is not None:
-            # The phrasing model states the number, not counts rows itself —
-            # Responder.run's "no rows -> empty answer" short-circuit would
-            # otherwise fire here since a count subquery carries no list rows.
+            # The phrasing model states the number, not counts rows itself.
+            # `force=True` because a pure count subquery has no list rows at
+            # all — Responder.run's usual "no rows -> empty answer"
+            # short-circuit must not fire here.
             count_question = f"{question} (there are {count} matching items)"
-            text = self._backend.phrase(
-                count_question, rows_to_json(data_rows, now), plan.answer_shape,
-                context=context,
+            text = Responder(self._backend).run(
+                count_question, data_rows, plan.answer_shape, now=now,
+                context=context, force=True,
             )
         else:
             text = Responder(self._backend).run(

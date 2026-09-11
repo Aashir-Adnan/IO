@@ -137,3 +137,35 @@ def test_count_aggregation_reports_a_number(db, fake_backend, config, stub_embed
     ans = QueryPipeline(fake_backend, stub_embedder, config.resolver).answer(
         db, "how many films on my list", NOW)
     assert ans.count == 4
+    # The count path must still go through a real phrase() call (routed
+    # through Responder.run(force=True)), not silently return the fallback
+    # "I don't have anything" text that a pure-count (rows-empty) query would
+    # otherwise trigger.
+    assert ans.text == "You have 4."
+    assert "phrase" in fake_backend.calls
+    assert fake_backend.last_phrase_rows == []
+
+
+@requires_db
+def test_count_survives_a_large_fresh_list_in_a_combined_query(db, fake_backend, config, stub_embedder):
+    """Regression: a count subquery's synthetic row used to be ranked
+    alongside real rows (it has no date, so it scored like a very old row)
+    and could be evicted from the top-N by a large fresher list subquery,
+    silently dropping the count."""
+    u = m.Utterance(text="x", source="text", captured_at=NOW); db.add(u); db.flush()
+    for i in range(4):
+        db.add(m.Record(kind="watchlist", title=f"film {i}", status="open",
+                        source_utterance_id=u.id))
+    for i in range(25):
+        db.add(m.Record(kind="event", title=f"event {i}",
+                        occurred_at=NOW - dt.timedelta(hours=i),
+                        source_utterance_id=u.id))
+    db.flush()
+    fake_backend.set_plan({"subqueries": [
+        {"target_type": "record", "kind_filter": ["watchlist"], "aggregation": "count"},
+        {"target_type": "record", "kind_filter": ["event"]},
+    ], "answer_shape": "text"})
+    fake_backend.set_answer("4 films; here's what happened.")
+    ans = QueryPipeline(fake_backend, stub_embedder, config.resolver).answer(
+        db, "how many films, and what happened recently?", NOW)
+    assert ans.count == 4

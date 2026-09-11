@@ -121,3 +121,37 @@ def test_compile_count_matches_the_same_filters(db):
     sq = SubQuery(target_type="record", kind_filter=["watchlist"])
     n = db.execute(compile_count(sq, EMPTY, NOW)).scalar_one()
     assert n == 3
+
+
+@requires_db
+def test_compile_count_respects_the_roll_forward_window(db):
+    """The time-window + roll-forward OR-clause is copied into compile_count
+    (not shared via _conds) — this locks the two functions together so a
+    "how many tasks are due" count matches what the list view would show,
+    including an overdue-but-open task outside the literal window."""
+    uid = _utt(db)
+    overdue = m.Record(kind="task", title="overdue thing", status="open",
+                       due_at=NOW - dt.timedelta(days=3), attributes={},
+                       source_utterance_id=uid)
+    in_window = m.Record(kind="task", title="today thing", status="open",
+                         due_at=NOW, attributes={}, source_utterance_id=uid)
+    out_of_window_closed = m.Record(kind="task", title="done long ago", status="done",
+                                    due_at=NOW - dt.timedelta(days=30), attributes={},
+                                    source_utterance_id=uid)
+    # Open, but neither in the literal window nor overdue (due in the
+    # future) — must be excluded by the window on both sides. Without the
+    # roll-forward OR-clause actually running inside compile_count, this
+    # record would be miscounted as included (a "how many" call ignoring
+    # time_window entirely, per the bug the test guards against).
+    future_open = m.Record(kind="task", title="future thing", status="open",
+                           due_at=NOW + dt.timedelta(days=10), attributes={},
+                           source_utterance_id=uid)
+    db.add_all([overdue, in_window, out_of_window_closed, future_open])
+    db.flush()
+    sq = SubQuery(target_type="record", status_filter=["open"],
+                  time_window=TimeWindow(start=NOW.replace(hour=0, minute=0),
+                                         end=NOW.replace(hour=23, minute=59)))
+    rows = db.execute(compile_structured(sq, EMPTY, NOW)).scalars().all()
+    n = db.execute(compile_count(sq, EMPTY, NOW)).scalar_one()
+    assert n == len(rows) == 2
+    assert {r.id for r in rows} == {overdue.id, in_window.id}
