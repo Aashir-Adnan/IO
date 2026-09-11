@@ -26,6 +26,7 @@ export function mount(root, ctx) {
         <h1>Memory</h1>
         <span class="records-count mono"></span>
         <div class="records-filters"></div>
+        <div class="records-collections"></div>
       </div>
       <div class="records-list"></div>
     </section>`;
@@ -33,13 +34,17 @@ export function mount(root, ctx) {
   root.querySelector(".records-back").onclick = () => ctx.goto("conversation");
   const listEl = root.querySelector(".records-list");
   const filtersEl = root.querySelector(".records-filters");
+  const collectionsEl = root.querySelector(".records-collections");
   const countEl = root.querySelector(".records-count");
 
   let all = [];
   let domain = null;
+  let kind = null;
+  let collections = [];
 
   function render() {
-    const rows = domain ? all.filter((r) => (r.domain || "—") === domain) : all;
+    const rows = all.filter((r) =>
+      (!domain || (r.domain || "—") === domain) && (!kind || r.kind === kind));
     countEl.textContent = `${rows.length} of ${all.length}`;
 
     const domains = [...new Set(all.map((r) => r.domain || "—"))].sort();
@@ -48,6 +53,13 @@ export function mount(root, ctx) {
       domains.map((d) => `<button class="rec-filter${domain === d ? " on" : ""}" data-d="${esc(d)}">${esc(d)}</button>`).join("");
     filtersEl.querySelectorAll(".rec-filter").forEach((b) => {
       b.onclick = () => { domain = b.dataset.d || null; render(); };
+    });
+
+    collectionsEl.innerHTML = collections.map((c) =>
+      `<button class="col-filter${kind === c.kind_slug ? " on" : ""}" data-k="${esc(c.kind_slug)}">${esc(c.name)} <span class="col-filter-count">${c.open_count}/${c.open_count + c.done_count}</span></button>`
+    ).join("");
+    collectionsEl.querySelectorAll(".col-filter").forEach((b) => {
+      b.onclick = () => { kind = kind === b.dataset.k ? null : b.dataset.k; render(); };
     });
 
     if (!rows.length) {
@@ -134,4 +146,5 @@ export function mount(root, ctx) {
 
   ctx.api.records().then((d) => { all = d; render(); })
     .catch(() => { listEl.innerHTML = `<div class="records-empty">Couldn't load records.</div>`; });
+  ctx.api.collections().then((d) => { collections = d; render(); }).catch(() => {});
 }

@@ -64,6 +64,20 @@ def test_records_row_has_status_toggle():
     assert "record-check" in src
 
 
+def test_records_view_has_collection_filter_chips():
+    src = (FRONTEND / "views" / "records.js").read_text()
+    assert "ctx.api.collections()" in src
+    assert "col-filter" in src
+
+    js = f"""
+    import * as api from {json.dumps((FRONTEND / 'api.js').as_uri())};
+    const c = api.Api('');
+    if (typeof c.collections !== 'function') throw new Error('missing api.collections');
+    console.log('ok');
+    """
+    assert _run(js) == "ok"
+
+
 def test_completion_gate_renders_numbered_choice_buttons():
     """The which-one completion gate parses numbered lines out of frame.text
     and renders one button per candidate (class 'gate-choice')."""

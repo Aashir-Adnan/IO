@@ -91,3 +91,18 @@ def test_patch_record_status_maintains_completed_at(config, fake_backend, db):
         c.patch(f"/record/{rid}", json={"status": "open"})
         db.expire_all()
         assert db.get(m.Record, rid).completed_at is None
+
+
+@requires_db
+def test_collections_endpoint_lists_with_counts(config, fake_backend, db):
+    u = m.Utterance(text="x", source="text", captured_at=NOW); db.add(u); db.flush()
+    db.add(m.Collection(kind_slug="watchlist", name="watchlist", synonyms=["watchlist"], field_hint={"checkable": True}))
+    db.add(m.Record(kind="watchlist", title="A", status="open", source_utterance_id=u.id))
+    db.add(m.Record(kind="watchlist", title="B", status="done", source_utterance_id=u.id))
+    db.flush()
+    app = create_app(config, orchestrator=Orchestrator(config, session_factory=lambda: db, backend=fake_backend),
+        engine=db.get_bind(), conversations=ConversationStore(lambda: db))
+    with TestClient(app) as c:
+        rows = c.get("/collections").json()
+    w = next(r for r in rows if r["kind_slug"] == "watchlist")
+    assert w["open_count"] == 1 and w["done_count"] == 1

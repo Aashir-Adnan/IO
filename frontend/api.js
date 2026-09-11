@@ -53,6 +53,7 @@ export function Api(base = "") {
       if (domain) q.set("domain", domain);
       return j(await fetch(`${b}/records?${q}`));
     },
+    async collections() { return j(await fetch(`${b}/collections`)); },
     async editRecord(id, patch) {
       return j(await fetch(`${b}/record/${id}`, {
         method: "PATCH", headers: { "content-type": "application/json" },

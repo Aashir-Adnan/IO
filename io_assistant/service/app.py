@@ -9,7 +9,7 @@ import httpx
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from fastapi.staticfiles import StaticFiles
 
 from io_assistant.config import Config
@@ -272,6 +272,19 @@ def create_app(
     def records_get(limit: int = 200, kind: str | None = None, domain: str | None = None):
         with factory() as s:
             return records_list(s, limit=limit, kind=kind, domain=domain)
+
+    @app.get("/collections")
+    def collections_list():
+        with factory() as s:
+            out = []
+            for c in s.execute(select(m.Collection).order_by(m.Collection.created_at)).scalars():
+                base = select(func.count()).select_from(m.Record).where(m.Record.kind == c.kind_slug)
+                out.append({
+                    "kind_slug": c.kind_slug, "name": c.name, "item_noun": c.item_noun,
+                    "open_count": s.execute(base.where(m.Record.status == "open")).scalar_one(),
+                    "done_count": s.execute(base.where(m.Record.status == "done")).scalar_one(),
+                })
+            return out
 
     @app.patch("/record/{record_id}")
     def record_edit(record_id: int, body: RecordEditIn):
