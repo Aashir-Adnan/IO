@@ -1,6 +1,11 @@
 import datetime as dt
 
-from io_assistant.resolve.dates import ground, to_rrule
+from io_assistant.resolve.dates import (
+    ground,
+    is_someday_phrase,
+    start_of_day,
+    to_rrule,
+)
 
 NOW = dt.datetime(2026, 9, 7, 15, 0, tzinfo=dt.timezone.utc)  # a Monday
 
@@ -240,3 +245,50 @@ def test_absolute_date_equal_to_today_still_grounds():
     today = dt.datetime(2026, 9, 10, 9, 30, tzinfo=dt.timezone.utc)
     r = ground("the 10th of september", today)
     assert r.ok and r.value.date() == dt.date(2026, 9, 10)
+
+
+# --- someday phrasing (Task 10 / Group E fix round) ------------------------
+
+
+def test_someday_phrases_ground_to_dateless_not_gated():
+    for phrase in ("someday", "eventually", "no rush"):
+        r = ground(phrase, NOW)
+        assert r.ok is True and r.value is None, phrase
+
+
+def test_next_friday_still_grounds_normally():
+    # unaffected by the someday branch — a plain date phrase with no someday
+    # wording in it.
+    r = ground("next friday", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 11)
+
+
+def test_mixed_someday_and_real_date_still_grounds_the_date():
+    # "by Friday, no rush" must not let "no rush" swallow the real weekday.
+    r = ground("Friday, no rush", NOW)
+    assert r.ok and r.value.date() == dt.date(2026, 9, 11)
+
+    r2 = ground("Tuesday whenever", NOW)
+    assert r2.ok and r2.value.date() == dt.date(2026, 9, 8)
+
+
+def test_one_day_idiom_is_not_swallowed_as_someday():
+    # the "one day" alternative was dropped from _SOMEDAY for being over-broad
+    # (matched "one day at a time" / "in one day"); this phrase is not really
+    # "no particular date" as a due phrase, so it fails to ground as before.
+    r = ground("one day at a time", NOW)
+    assert r.ok is False and r.value is None
+
+
+def test_start_of_day_is_local_midnight():
+    d = dt.datetime(2026, 9, 7, 18, 30, 45, tzinfo=dt.timezone.utc)
+    assert start_of_day(d) == dt.datetime(2026, 9, 7, 0, 0, tzinfo=dt.timezone.utc)
+
+
+def test_is_someday_phrase():
+    assert is_someday_phrase("someday") is True
+    assert is_someday_phrase("eventually") is True
+    assert is_someday_phrase("no rush") is True
+    assert is_someday_phrase(None) is False
+    assert is_someday_phrase("") is False
+    assert is_someday_phrase("next friday") is False

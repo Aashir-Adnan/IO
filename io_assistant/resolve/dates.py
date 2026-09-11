@@ -49,10 +49,12 @@ _WEEKDAYS = {
 
 # "no particular date" phrasing — a groundable answer of "no date", NOT an
 # ungroundable failure. A bare task with one of these stays dateless instead of
-# defaulting to due-today.
+# defaulting to due-today. No bare "one day" alternative — it over-matches
+# idioms like "one day at a time" / "in one day" that aren't expressing "no
+# particular date".
 _SOMEDAY = re.compile(
     r"\b(some\s?day|eventually|some\s?point|no rush|no hurry|whenever|"
-    r"one day|at some point|down the line|in the future)\b",
+    r"at some point|down the line|in the future)\b",
     re.IGNORECASE,
 )
 
@@ -68,9 +70,13 @@ def start_of_day(d: datetime) -> datetime:
     return d.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-# a digit or a month name — enough to say a phrase carries a real date
+# a digit, a month name, or a weekday name — enough to say a phrase carries a
+# real date, so a "someday"-flavoured phrase that also names one ("by Friday,
+# no rush") is not silently swallowed as dateless.
+_WEEKDAY_TOKEN = r"\b(?:" + "|".join(_WEEKDAYS.keys()) + r")\b"
 _DATEISH = re.compile(
-    r"\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec", re.IGNORECASE
+    r"\d|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|" + _WEEKDAY_TOKEN,
+    re.IGNORECASE,
 )
 
 _RRULE_WEEKDAY_CODE = {
@@ -143,7 +149,10 @@ def ground(phrase: str | None, now: datetime) -> DateResult:
     if phrase is None or not phrase.strip():
         return DateResult(None, True)
 
-    if is_someday_phrase(phrase):
+    # A mixed phrase ("by Friday, no rush", "Tuesday whenever") carries a real
+    # date token alongside the someday marker — ground the date, don't let the
+    # someday wording swallow it.
+    if is_someday_phrase(phrase) and not _DATEISH.search(phrase):
         return DateResult(None, True)
 
     text = _normalize(phrase)
