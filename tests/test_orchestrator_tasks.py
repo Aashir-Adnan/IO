@@ -49,6 +49,14 @@ def _get(db, rid):
     ("that's done", "done"),
     ("cancel the dentist task", "dropped"),
     ("forget the milk", "dropped"),
+    # Finding 3: the object marker after the drop verb must be a real
+    # definite article, not just "any word" — otherwise ordinary new bare-
+    # imperative tasks get silently discarded instead of stored.
+    ("drop off the kids at school", None),
+    ("skip leg day this week", None),
+    # "scrap" + a real definite article ("the") still reads as a
+    # completion-attempt, so this one must stay "dropped".
+    ("scrap the old couch this weekend", "dropped"),
     ("I did the laundry", "done"),
     ("took care of the dentist appointment", "done"),
     ("I need to buy groceries", None),

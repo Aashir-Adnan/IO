@@ -71,7 +71,7 @@ _COMPLETE_DONE = re.compile(
 )
 _COMPLETE_DROP = re.compile(
     rf"^\s*(?:{_DROP_VERB})\s+(?:about\s+)?(?!it\b|that\s*$)"
-    r"(?:the|that|my|this|those|these)?\s*[\w'-]{2,}"
+    rf"(?:{_DEFINITE})\s*[\w'-]{{2,}}"
     r"|^\s*never\s?mind\s+(?:the|that|my|about)\b"
     r"|^\s*(?:i\s+)?(?:don'?t|do not)\s+need\s+to\b"
     r"|^\s*(?:i'?m\s+)?not\s+doing\b",
