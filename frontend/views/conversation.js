@@ -6,6 +6,7 @@ import { Composer } from "../components/composer.js";
 import { mountInspector } from "../components/inspector.js";
 import { HistoryList } from "../components/history.js";
 import { icon } from "../vendor/icons.js";
+import { thoughtLabel } from "../progress.js";
 
 let session = { recalls: 0, writes: 0 };
 
@@ -151,12 +152,19 @@ function startProgress(thread, live) {
   box.className = "turn-pending";
   box.dataset.t0 = String(Date.now());
   box.innerHTML = `
-    <div class="tp-head">
-      <span class="tp-spin"></span>
-      <span class="tp-stage">${live ? "Working on it…" : "Thinking…"}</span>
+    <button class="tp-head" type="button" aria-expanded="false">
+      <span class="tp-glyph"></span>
+      <span class="tp-stage shimmer">${live ? "Working on it…" : "Thinking…"}</span>
       <span class="tp-elapsed mono"></span>
-    </div>
-    <div class="tp-log"></div>`;
+      <span class="tp-chev">${icon("caretRight", { size: 12 })}</span>
+    </button>
+    <div class="tp-log" hidden></div>`;
+  box.querySelector(".tp-head").addEventListener("click", (e) => {
+    const open = box.querySelector(".tp-log").hidden;
+    box.querySelector(".tp-log").hidden = !open;
+    e.currentTarget.setAttribute("aria-expanded", String(open));
+    box.classList.toggle("open", open);
+  });
   thread.appendChild(box);
   box._timer = setInterval(() => {
     const s = ((Date.now() - +box.dataset.t0) / 1000).toFixed(1);
@@ -170,7 +178,10 @@ function addProgress(thread, stage, detail) {
   let box = thread.querySelector(".turn-pending");
   if (!box) { startProgress(thread, true); box = thread.querySelector(".turn-pending"); }
   const st = box.querySelector(".tp-stage");
-  if (st) st.textContent = stage;
+  if (st && st.textContent !== stage) {
+    st.textContent = stage;
+    st.classList.remove("swap"); void st.offsetWidth; st.classList.add("swap");
+  }
   const line = document.createElement("div");
   line.className = "tp-line";
   line.innerHTML = `<span>${escHtml(stage)}</span>${detail ? `<span class="tp-detail">${escHtml(detail)}</span>` : ""}`;
@@ -189,10 +200,11 @@ function takeProgressSteps(thread) {
   if (!box) return null;
   clearInterval(box._timer);
   const lines = [...box.querySelectorAll(".tp-line")].map((l) => l.innerHTML);
-  const secs = ((Date.now() - +box.dataset.t0) / 1000).toFixed(1);
+  const secs = (Date.now() - +box.dataset.t0) / 1000;
+  const open = box.classList.contains("open");
   box.remove();
   if (!lines.length) return null;
-  return { lines, secs };
+  return { lines, secs, open };
 }
 
 function escHtml(s) {
@@ -219,8 +231,9 @@ function renderAssistant(thread, frame, ctx, after) {
   if (steps) {
     const d = document.createElement("details");
     d.className = "turn-steps";
+    d.open = steps.open;
     d.innerHTML =
-      `<summary>${steps.lines.length} step${steps.lines.length === 1 ? "" : "s"} · ${steps.secs}s</summary>` +
+      `<summary>${thoughtLabel(steps.secs)}<span class="tp-chev">${icon("caretRight", { size: 12 })}</span></summary>` +
       `<div class="ts-log">${steps.lines.map((l) => `<div class="tp-line">${l}</div>`).join("")}</div>`;
     b.actions.appendChild(d);
   }
