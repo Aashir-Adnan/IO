@@ -43,6 +43,17 @@ non-local host — is a bug.
    anything on its own: an update runs only when the user clicks "Update &
    restart". `[updates] enabled = false` opens no socket.
 
+8. **Google Drive (memory sync)** — `[sync].enabled` (default **false**) and signed
+   in: `accounts.google.com` / `oauth2.googleapis.com` for sign-in, and
+   `www.googleapis.com` (Drive v3, scope `drive.appdata` only — IO can reach its
+   own hidden app folder and nothing else in the Drive) to exchange sync batches.
+   What leaves the machine: people, places, items, occasions, records/tasks,
+   affiliations, conversations and messages as gzip-JSON, in plaintext to the
+   user's *own* Drive (Google encrypts at rest); embeddings and the file index
+   never sync. The refresh token lives in the OS keychain; the password is never
+   seen. `[sync] folder = "<dir>"` uses a local directory instead and opens no
+   socket. `[sync] enabled = false` opens no socket.
+
 `web.enabled = false` (the default) ⇒ the `web` action is not registered, the
 routing pre-check is skipped, and general-knowledge questions stay `unknown`
 exactly as before — no web tables are touched, no sockets opened.

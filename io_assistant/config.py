@@ -142,6 +142,17 @@ class UpdatesConfig(BaseModel):
     repo_dir: str = ""        # "" = auto (source checkout, else CWD)
 
 
+class SyncConfig(BaseModel):
+    # Memory sync across devices through the user's own Google Drive (appData
+    # folder) or, for a folder, any directory (a OneDrive/Dropbox folder works).
+    # Opt-in; see rules/local-first.md case 8 and the memory-sync spec.
+    enabled: bool = False
+    folder: str = ""           # set => sync through this directory instead of Drive
+    client_id: str = ""        # your Google Cloud OAuth "Desktop app" client
+    client_secret: str = ""    # not confidential for an installed app
+    interval_s: float = 60.0
+
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -154,6 +165,7 @@ class Config(BaseModel):
     files: FilesConfig = FilesConfig()
     web: WebConfig = WebConfig()
     updates: UpdatesConfig = UpdatesConfig()
+    sync: SyncConfig = SyncConfig()
 
     @property
     def owner_name(self) -> str:

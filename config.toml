@@ -74,3 +74,12 @@ instant_ttl_min = 1440
 fuzzy_threshold = 92
 vector_similarity_threshold = 0.85
 confidence_gate_threshold = 0.6
+
+# [sync] is opt-in memory sync through your own Google Drive (or any folder).
+# Put your real values in config.local.toml (gitignored), not here. Setup steps:
+# .claude/knowledge/memory-sync.md
+# [sync]
+# enabled = false
+# folder = ""                     # a directory instead of Drive (OneDrive/Dropbox ok)
+# client_id = ""
+# client_secret = ""

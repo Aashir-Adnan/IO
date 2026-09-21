@@ -109,6 +109,9 @@ def create_app(
             conv_id, "assistant", result.message,
             kind=result.intent_kind, intent=result.intent, source=body.source,
         )
+        poke = getattr(getattr(app.state, "sync", None), "poke", None)
+        if poke is not None:                      # sync soon after a write
+            poke()
 
         token = None
         if result.pending is not None:
@@ -420,6 +423,35 @@ def create_app(
         @app.on_event("shutdown")
         def _stop_updater():
             updater.stop()
+
+    from io_assistant.sync.manager import SyncManager
+
+    sync = SyncManager(config, factory)
+    app.state.sync = sync
+    # background sync only in production (create_app owns its engine)
+    if engine is None and config.sync.enabled:
+        sync.start()
+
+        @app.on_event("shutdown")
+        def _stop_sync():
+            sync.stop()
+
+    @app.get("/sync")
+    def sync_status():
+        return app.state.sync.status()
+
+    @app.post("/sync/now")
+    def sync_now():
+        return app.state.sync.sync_now()
+
+    @app.post("/sync/signin")
+    def sync_signin():
+        return app.state.sync.sign_in()
+
+    @app.post("/sync/signout")
+    def sync_signout():
+        app.state.sync.sign_out()
+        return {"ok": True}
 
     @app.get("/update")
     def update_status(refresh: bool = False):
