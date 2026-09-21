@@ -27,6 +27,11 @@ class BackendConfig(BaseModel):
     instruct_model: str
     embed_model: str
     num_thread: int
+    # "auto": Ollama when reachable, else the in-process fastembed model (same
+    # nomic-embed-text v1.5, 768-d, so vectors are interchangeable).
+    embedder: Literal["auto", "ollama", "builtin"] = "auto"
+    builtin_embed_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    models_dir: str = "~/.local/share/io/models"
 
 class ResolverConfig(BaseModel):
     fuzzy_threshold: int
