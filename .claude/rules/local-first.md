@@ -54,6 +54,19 @@ non-local host — is a bug.
    seen. `[sync] folder = "<dir>"` uses a local directory instead and opens no
    socket. `[sync] enabled = false` opens no socket.
 
+9. **Open-Meteo (weather widget)** — `geocoding-api.open-meteo.com` and
+   `api.open-meteo.com`, only while a weather widget on the home screen has a
+   city set. The *service* makes the calls (never the browser): a place-name
+   search, or coordinates for the forecast; nothing else about the user. No key.
+   No weather widget ⇒ no socket.
+
+10. **Gmail (Important widget)** — `gmail.googleapis.com` plus the Google sign-in
+    hosts (case 8), only after the user clicks "Connect Gmail". Scope
+    `gmail.readonly`, message *metadata* only (From/Subject/Date via
+    `format=metadata`), never bodies. Its own keychain token, separate from the
+    Drive sync grant, so neither consent widens the other. The service calls
+    Google; sender + subject go to the local UI only. Disconnect clears the token.
+
 `web.enabled = false` (the default) ⇒ the `web` action is not registered, the
 routing pre-check is skipped, and general-knowledge questions stay `unknown`
 exactly as before — no web tables are touched, no sockets opened.

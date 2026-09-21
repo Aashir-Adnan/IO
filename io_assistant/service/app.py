@@ -457,6 +457,27 @@ def create_app(
     def weather_forecast(lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180)):
         return _weather_call(app.state.weather.forecast, lat, lon)
 
+    from io_assistant.widgets.gmail import GmailConnector
+
+    app.state.gmail = GmailConnector(config)
+
+    @app.get("/gmail")
+    def gmail_status():
+        return app.state.gmail.status()
+
+    @app.post("/gmail/connect")
+    def gmail_connect():
+        return app.state.gmail.connect()
+
+    @app.post("/gmail/disconnect")
+    def gmail_disconnect():
+        app.state.gmail.disconnect()
+        return {"ok": True}
+
+    @app.get("/gmail/important")
+    def gmail_important():
+        return app.state.gmail.important()
+
     from io_assistant.widgets.tasks import alerts as widget_alerts, pending_tasks
 
     @app.get("/tasks")

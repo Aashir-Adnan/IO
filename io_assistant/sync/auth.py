@@ -17,41 +17,44 @@ def _client_config(client_id: str, client_secret: str) -> dict:
         "token_uri": _TOKEN_URI, "redirect_uris": ["http://localhost"]}}
 
 
-def sign_in(client_id: str, client_secret: str):
-    """Open the browser for consent (blocks until done); returns Credentials."""
+def sign_in(client_id: str, client_secret: str, *, scopes=None, account: str = _USER):
+    """Open the browser for consent (blocks until done); returns Credentials.
+    `scopes`/`account` default to the Drive sync grant; the Gmail widget uses its
+    own scope and keychain entry so the two consents never widen each other."""
     if not client_id or not client_secret:
         raise RuntimeError("Set [sync] client_id and client_secret in config.local.toml first "
                            "(see .claude/knowledge/memory-sync.md).")
     import keyring
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    flow = InstalledAppFlow.from_client_config(_client_config(client_id, client_secret), SCOPES)
+    flow = InstalledAppFlow.from_client_config(
+        _client_config(client_id, client_secret), scopes or SCOPES)
     creds = flow.run_local_server(port=0, access_type="offline", prompt="consent",
                                   open_browser=True)
     if not creds.refresh_token:
         raise RuntimeError("Google returned no refresh token; revoke IO's access at "
                            "myaccount.google.com/permissions and sign in again.")
-    keyring.set_password(_SERVICE, _USER, creds.refresh_token)
+    keyring.set_password(_SERVICE, account, creds.refresh_token)
     return creds
 
 
-def load(client_id: str, client_secret: str):
+def load(client_id: str, client_secret: str, *, scopes=None, account: str = _USER):
     """Credentials from the stored refresh token, or None if not signed in."""
     import keyring
     from google.oauth2.credentials import Credentials
 
-    token = keyring.get_password(_SERVICE, _USER)
+    token = keyring.get_password(_SERVICE, account)
     if not token:
         return None
     return Credentials(None, refresh_token=token, token_uri=_TOKEN_URI,
-                       client_id=client_id, client_secret=client_secret, scopes=SCOPES)
+                       client_id=client_id, client_secret=client_secret, scopes=scopes or SCOPES)
 
 
-def clear() -> None:
+def clear(*, account: str = _USER) -> None:
     import keyring
 
     try:
-        keyring.delete_password(_SERVICE, _USER)
+        keyring.delete_password(_SERVICE, account)
     except keyring.errors.PasswordDeleteError:
         pass
 
