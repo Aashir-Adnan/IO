@@ -177,6 +177,20 @@ a:hover { color: var(--color-accent-300); }
   background: var(--color-accent-600);
   animation: io-blip 2.6s ease-in-out infinite;
 }
+.topbar-update {
+  margin-left: 12px; padding: 4px 10px; border-radius: 999px;
+  background: var(--color-accent); color: #fff;
+  font: 500 11px/1 var(--font-body); white-space: nowrap;
+}
+.topbar-update:hover { filter: brightness(1.08); }
+.upd-list { margin: 6px 0; padding-left: 18px; color: var(--ink-2);
+  font: 400 12px/1.5 var(--font-mono); }
+.upd-actions { display: flex; gap: 8px; margin-top: 10px; }
+.upd-btn { padding: 7px 14px; border-radius: 10px; background: var(--fill); color: var(--ink);
+  font: 500 12.5px/1 var(--font-body); cursor: pointer; }
+.upd-btn:hover:not(:disabled) { background: var(--fill-strong); }
+.upd-btn.primary { background: var(--color-accent); color: #fff; }
+.upd-btn:disabled { opacity: .5; cursor: default; }
 .topbar-gear {
   width: 22px; height: 22px; display: grid; place-items: center;
   border-radius: 6px; color: var(--ink-2);

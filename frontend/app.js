@@ -60,7 +60,21 @@ const ctx = {
   speak, stopAudio,
   goto: (v) => store.set({ view: v }),
   openSettings: () => settings && settings.open(),
+  setUpdate: (u) => paintUpdate(u),
 };
+
+// "Update available" pill in the topbar; Settings → Updates has the detail.
+function paintUpdate(u) {
+  store.set({ update: u });
+  const pill = document.getElementById("update-pill");
+  if (!pill) return;
+  const on = !!(u && u.enabled !== false && u.available);
+  pill.hidden = !on;
+  if (on) pill.textContent = `Update available · ${u.behind}`;
+}
+async function checkUpdate() {
+  try { paintUpdate(await api.update()); } catch { /* offline, or an older server */ }
+}
 
 function handleTurn(frame) {
   const gc = (frame.cards || []).find((c) => c.type === "gallery");
@@ -194,4 +208,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (convs[0]) store.set({ conversationId: convs[0].id, conversationTitle: convs[0].title || null });
   } catch { /* fresh */ }
   route();
+  document.getElementById("update-pill").onclick = () => settings.open();
+  setTimeout(checkUpdate, 20000);           // after the service's first fetch
+  setInterval(checkUpdate, 10 * 60 * 1000);
 });

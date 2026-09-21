@@ -35,6 +35,14 @@ non-local host — is a bug.
    (~520 MB); nothing about the user is sent. Once cached, embedding is fully
    offline. `io doctor --fetch-embedder` triggers it deliberately.
 
+7. **`git fetch` to the update remote** — `[updates].enabled` (default true):
+   `io_assistant/updates/check.py` runs `git fetch <remote>` in IO's own
+   checkout (on startup, then every `interval_h`) to see whether a newer commit
+   exists. Plain git only: no GitHub API, no token stored by IO, no IO
+   identifiers in the request, `GIT_TERMINAL_PROMPT=0`. It never applies
+   anything on its own: an update runs only when the user clicks "Update &
+   restart". `[updates] enabled = false` opens no socket.
+
 `web.enabled = false` (the default) ⇒ the `web` action is not registered, the
 routing pre-check is skipped, and general-knowledge questions stay `unknown`
 exactly as before — no web tables are touched, no sockets opened.

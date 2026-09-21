@@ -83,6 +83,9 @@ export function Api(base = "") {
         body: JSON.stringify({ path: path || null }),
       }));
     },
+    async update(refresh = false) { return j(await fetch(`${b}/update${refresh ? "?refresh=1" : ""}`)); },
+    async applyUpdate() { return j(await fetch(`${b}/update/apply`, { method: "POST" })); },
+
     async filesStatus() { return j(await fetch(`${b}/files/status`)); },
     async fileContent(path) {
       return j(await fetch(`${b}/files/content?path=` + encodeURIComponent(path)));

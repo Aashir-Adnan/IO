@@ -1,8 +1,52 @@
 import { icon } from "../vendor/icons.js";
 import { mountFolders } from "../views/library.js";
+import { updateMessage } from "../updates.js";
 
 function esc(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function mountUpdates(box, ctx) {
+  const paint = (u, note = "") => {
+    const m = updateMessage(u);
+    const where = u && u.branch ? `${esc(u.branch)} @ ${esc(u.sha)} · ` : "";
+    const when = u && u.checked_at ? new Date(u.checked_at * 1000).toLocaleString() : "not yet";
+    const subjects = ((u && u.subjects) || []).map((s) => `<li>${esc(s)}</li>`).join("");
+    box.innerHTML = `
+      <p class="settings-note">${where}last checked ${esc(when)}</p>
+      <p class="settings-note upd-msg">${esc(m.text)}</p>
+      ${subjects ? `<ul class="upd-list">${subjects}</ul>` : ""}
+      ${m.blocked ? `<p class="settings-note">${esc(m.blocked)}</p>` : ""}
+      ${note ? `<p class="settings-note">${esc(note)}</p>` : ""}
+      <div class="upd-actions">
+        <button type="button" class="upd-btn" data-act="check">Check now</button>
+        ${m.canApply ? '<button type="button" class="upd-btn primary" data-act="apply">Update &amp; restart</button>' : ""}
+      </div>`;
+    box.querySelector('[data-act="check"]').onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try { const n = await ctx.api.update(true); ctx.setUpdate(n); paint(n); }
+      catch (err) { paint(u, String(err.message || err)); }
+    };
+    const ap = box.querySelector('[data-act="apply"]');
+    if (ap) {
+      let armed = false;                     // two taps, like the memory browser's delete
+      ap.onclick = async () => {
+        if (!armed) {
+          armed = true;
+          ap.textContent = "Confirm: close IO and update";
+          setTimeout(() => { armed = false; ap.textContent = "Update & restart"; }, 5000);
+          return;
+        }
+        ap.disabled = true;
+        try {
+          await ctx.api.applyUpdate();
+          box.insertAdjacentHTML("beforeend",
+            '<p class="settings-note">Updating… IO will close and reopen shortly.</p>');
+        } catch (err) { paint(u, err.detail || String(err.message || err)); }
+      };
+    }
+  };
+  ctx.api.update().then((u) => { ctx.setUpdate(u); paint(u); }).catch(() => paint(null));
 }
 
 // The single "other place" in the app: window prefs + folder management.
@@ -29,6 +73,10 @@ export function Settings(el, scrim, ctx) {
             <input type="checkbox" id="set-speak" ${s.autoSpeak !== "never" ? "checked" : ""} />
           </label>
           <p class="settings-note">${s.voiceOk ? "Voice ready." : esc(s.voiceReason || "Voice model downloads on first use.")}</p>
+        </section>
+        <section class="settings-sec">
+          <div class="settings-sec-h">Updates</div>
+          <div class="settings-updates"></div>
         </section>
         <section class="settings-sec">
           <div class="settings-sec-h">Folders IO can read</div>
@@ -58,6 +106,7 @@ export function Settings(el, scrim, ctx) {
     if (curTheme) paint();
 
     mountFolders(el.querySelector(".settings-folders"), ctx);
+    mountUpdates(el.querySelector(".settings-updates"), ctx);
   }
 
   function open() {

@@ -309,3 +309,23 @@ light frosted-glass look — no theme toggle.
 
 State 1d task runner (agent loop); external-source provenance; entity-file
 browser; token streaming over `/ws`; real Mermaid; Kokoro `Speaker` adapter.
+
+
+## Self-update (2026-09-21)
+
+The git checkout is the install. `io_assistant/updates/`: `check.py`
+(`find_repo`, `check` → `UpdateStatus`; plain `git fetch`/`rev-list`/`log`),
+`apply.py` (`UpdateChecker` daemon thread — production only, i.e. when
+`create_app` owns its engine — and `spawn_update`), `localize.py`
+(`split_local`: move edits to `config.toml` into the gitignored
+`config.local.toml`; `load_config` deep-merges local over base).
+Service: `GET /update[?refresh=1]`, `POST /update/apply` (409 unless an update
+is available and the tracked tree is clean) → spawns detached
+`scripts/update.ps1` and exits IO after 1 s. The script snapshots the DB
+(`~/.local/share/io/backups/pre-update-<sha>.sql`, keeps 3, ~100 MB each on a
+real DB), `git pull --ff-only`, `uv sync`, rebuilds `dist\IO\IO.exe` if it
+exists, relaunches; on failure it resets HEAD only if the pull moved it.
+Migrations apply on the next launch. `[updates] branch = ""` = the current
+branch; a branch with no remote counterpart reports no update.
+UI: topbar `#update-pill`, Settings → Updates (`frontend/updates.js` holds the
+wording; two-tap "Update & restart"). `io update --check | --localize`.

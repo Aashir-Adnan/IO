@@ -9,8 +9,8 @@
   composer overlay shares it). Verified in the browser pane with a stubbed
   `api.sendText`; Docker was down so the full stack/suite was not run.
 - **A — Ollama-optional: DONE** (committed; see completed.md). Plan
-  `docs/superpowers/plans/2026-09-21-ollama-optional.md`. Specs D and F approved,
-  plans not yet written — next: D, then F.
+  `docs/superpowers/plans/2026-09-21-ollama-optional.md`. **D — self-update: DONE**
+  (see completed.md). Spec F approved, plan not yet written — next: F.
 - **Specs (approved):**
   `docs/superpowers/specs/2026-09-21-ollama-optional-design.md` (A),
   `…-self-update-design.md` (D), `…-memory-sync-design.md` (F, Supabase,

@@ -1,5 +1,14 @@
 # Completed (newest first)
 
+## 2026-09-21 — Self-update from GitHub
+Spec `docs/superpowers/specs/2026-09-21-self-update-design.md`, plan
+`docs/superpowers/plans/2026-09-21-self-update.md`. See knowledge
+`desktop-app.md` "Self-update". Config layering (`config.local.toml`), git-based
+check, `/update` endpoints, `scripts/update.ps1`, topbar pill + Settings →
+Updates. Verified: real git repos in tests; `update.ps1` dry-run against a
+scratch clone (success + dirty-tree abort); UI states in the browser pane.
+Not verified: a real end-to-end apply from the running app (needs a remote
+that is ahead), and the exe-relaunch path. Suite: 569 pass / 13 skip.
 ## 2026-09-21 — Ollama-optional + Claude-style live status
 Branch `io-window-glass`. Spec `docs/superpowers/specs/2026-09-21-ollama-optional-design.md`,
 plan `docs/superpowers/plans/2026-09-21-ollama-optional.md` (5 tasks).
