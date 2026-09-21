@@ -161,6 +161,37 @@ def doctor(
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
+@app.command()
+def update(
+    check_: bool = typer.Option(False, "--check", help="Fetch and report whether an update is available."),
+    localize: bool = typer.Option(False, "--localize", help="Move your config.toml edits into config.local.toml."),
+) -> None:
+    """Check the git remote for a newer IO (the app applies it from Settings → Updates)."""
+    from io_assistant.updates import check as ck
+    from io_assistant.updates import localize as lz
+
+    config = load_config()
+    repo = ck.find_repo(config)
+    if repo is None:
+        print("No git checkout found (set [updates] repo_dir).")
+        raise typer.Exit(1)
+    if localize:
+        moved = lz.split_local(repo)
+        print("Moved your settings into config.local.toml." if moved
+              else "Nothing to move.")
+        return
+    s = ck.check(repo, config.updates.remote, config.updates.branch)
+    if s.error:
+        print(f"Couldn't check for updates: {s.error}")
+        raise typer.Exit(1)
+    if not s.available:
+        print(f"IO is up to date ({s.branch} @ {s.sha}).")
+        return
+    print(f"{s.behind} new commit(s) on {s.branch}:")
+    for subj in s.subjects:
+        print(f"  - {subj}")
+
+
 @app.command("list")
 def list_(name: str = typer.Argument(None)) -> None:
     """List your tracked lists, or the items in one."""
