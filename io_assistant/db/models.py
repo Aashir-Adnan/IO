@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 from sqlalchemy import (
     BigInteger,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -26,7 +27,35 @@ from .base import Base
 EMBED_DIM = 768  # keep in sync with config.embedding_dim; migration owns the DDL
 
 
-class Utterance(Base):
+def _new_sync_id() -> str:
+    return str(uuid.uuid4())
+
+
+class SyncMixin:
+    """Global identity + dirty tracking for memory sync (migration 0010).
+    A row is dirty when synced_at IS NULL OR updated_at > synced_at."""
+    sync_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), nullable=False, unique=True,
+        default=_new_sync_id, server_default=text("gen_random_uuid()"),
+    )
+    synced_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class LinkSyncMixin:
+    synced_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+def _updated_at():
+    return mapped_column(DateTime(timezone=True), server_default=func.now(),
+                         onupdate=func.now(), nullable=False)
+
+
+
+class Utterance(SyncMixin, Base):
     __tablename__ = "utterances"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -36,9 +65,10 @@ class Utterance(Base):
     transcription_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     resolved_intent: Mapped[str | None] = mapped_column(String(16), nullable=True)
     marker: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
-class Person(Base):
+class Person(SyncMixin, Base):
     __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -54,7 +84,7 @@ class Person(Base):
     )
 
 
-class Place(Base):
+class Place(SyncMixin, Base):
     __tablename__ = "places"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -70,7 +100,7 @@ class Place(Base):
     )
 
 
-class Item(Base):
+class Item(SyncMixin, Base):
     __tablename__ = "items"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -86,7 +116,7 @@ class Item(Base):
     )
 
 
-class Occasion(Base):
+class Occasion(SyncMixin, Base):
     __tablename__ = "occasions"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -100,7 +130,7 @@ class Occasion(Base):
     )
 
 
-class Record(Base):
+class Record(SyncMixin, Base):
     __tablename__ = "records"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -129,7 +159,7 @@ class Record(Base):
     )
 
 
-class Collection(Base):
+class Collection(SyncMixin, Base):
     """A learned descriptor for an ad-hoc personal list (movies to watch, books
     to read, gift ideas). Created the first time the extraction model flags a
     record as an item in such a list; keyed by the records.kind slug the items
@@ -159,7 +189,7 @@ class Collection(Base):
     )
 
 
-class RecordPerson(Base):
+class RecordPerson(LinkSyncMixin, Base):
     __tablename__ = "record_people"
 
     record_id: Mapped[int] = mapped_column(
@@ -171,7 +201,7 @@ class RecordPerson(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordPlace(Base):
+class RecordPlace(LinkSyncMixin, Base):
     __tablename__ = "record_places"
 
     record_id: Mapped[int] = mapped_column(
@@ -183,7 +213,7 @@ class RecordPlace(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordItem(Base):
+class RecordItem(LinkSyncMixin, Base):
     __tablename__ = "record_items"
 
     record_id: Mapped[int] = mapped_column(
@@ -195,7 +225,7 @@ class RecordItem(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordOccasion(Base):
+class RecordOccasion(LinkSyncMixin, Base):
     __tablename__ = "record_occasions"
 
     record_id: Mapped[int] = mapped_column(
@@ -207,7 +237,7 @@ class RecordOccasion(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class OccasionPerson(Base):
+class OccasionPerson(LinkSyncMixin, Base):
     __tablename__ = "occasion_people"
 
     occasion_id: Mapped[int] = mapped_column(
@@ -219,7 +249,7 @@ class OccasionPerson(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class Conversation(Base):
+class Conversation(SyncMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (Index("ix_conversations_last_at", "last_at"),)
 
@@ -231,9 +261,10 @@ class Conversation(Base):
     last_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
-class Message(Base):
+class Message(SyncMixin, Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_conversation_id_created_at", "conversation_id", "created_at"),
@@ -255,6 +286,7 @@ class Message(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
 class FileNode(Base):
@@ -460,3 +492,42 @@ class Tracker(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# --- memory sync bookkeeping (migration 0010) ------------------------------
+class SyncTombstone(Base):
+    """A delete or merge of a synced row, to propagate to other devices."""
+    __tablename__ = "sync_tombstones"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    sync_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    merged_into: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    deleted_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SyncAlias(Base):
+    """A merged-away sync_id -> the surviving sync_id."""
+    __tablename__ = "sync_aliases"
+
+    alias: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    canonical: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+
+
+class SyncState(Base):
+    """Per-device sync counters (own seq, last applied seq per peer, ...)."""
+    __tablename__ = "sync_state"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+from .sync_hooks import install as _install_sync_hooks  # noqa: E402
+
+_install_sync_hooks(
+    (Utterance, Person, Place, Item, Occasion, Record, Collection, Conversation, Message),
+    SyncTombstone,
+)
