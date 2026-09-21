@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import os
 import secrets
+import sys
+import threading
 import tempfile
 from pathlib import Path
 
@@ -403,6 +406,44 @@ def create_app(
         @app.on_event("shutdown")
         def _stop_backfiller():
             backfiller.stop()
+
+    from io_assistant.updates.apply import UpdateChecker, spawn_update
+
+    updater = UpdateChecker(config)
+    app.state.updater = updater
+    app.state.spawn_update = spawn_update
+    app.state.exit_fn = lambda: threading.Timer(1.0, os._exit, [0]).start()
+    # background git fetch only in production (create_app owns its engine)
+    if engine is None and config.updates.enabled:
+        updater.start()
+
+        @app.on_event("shutdown")
+        def _stop_updater():
+            updater.stop()
+
+    @app.get("/update")
+    def update_status(refresh: bool = False):
+        if not config.updates.enabled:
+            return {"enabled": False, "available": False}
+        u = app.state.updater
+        st = u.check_now() if refresh else u.status
+        return {"enabled": True, "repo": u.repo is not None, **st.as_dict()}
+
+    @app.post("/update/apply")
+    def update_apply():
+        u = app.state.updater
+        st = u.status
+        if not config.updates.enabled or u.repo is None:
+            raise HTTPException(status_code=409, detail="Updates aren't available: no git checkout found.")
+        if not st.available:
+            raise HTTPException(status_code=409, detail="IO is already up to date.")
+        if st.dirty:
+            raise HTTPException(
+                status_code=409,
+                detail="You have local changes to tracked files. Commit or discard them, then try again.")
+        app.state.spawn_update(u.repo, "exe" if getattr(sys, "frozen", False) else "dev")
+        app.state.exit_fn()
+        return {"ok": True}
 
     app.state.index_queue = None
     if config.files.enabled:
