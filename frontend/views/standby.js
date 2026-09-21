@@ -1,6 +1,7 @@
 import { Orb } from "../components/orb.js";
 import { icon } from "../vendor/icons.js";
 import { createMic } from "../mic.js";
+import { mountBoard } from "../widgets/board.js";
 
 function greet(clockIso) {
   const h = clockIso ? new Date(clockIso).getHours() : new Date().getHours();
@@ -52,11 +53,13 @@ export function mount(root, ctx) {
           <div class="standby-agenda"></div>
         </div>
       </div>
+      <div class="standby-widgets"></div>
       <div class="standby-foot">
         <div class="standby-greet"></div>
         <form class="askbar">
           <button type="button" class="askbar-mic" aria-label="Voice">${icon("mic", { size: 18 })}</button>
           <textarea class="askbar-in" rows="1" placeholder="Ask IO anything" autocomplete="off"></textarea>
+          <button type="button" class="askbar-act" data-act="widgets" aria-label="Edit widgets" title="Edit widgets">${icon("squaresFour", { size: 17 })}</button>
           <button type="button" class="askbar-act" data-go="library" aria-label="Files">${icon("folder", { size: 17 })}</button>
           <button type="button" class="askbar-act" data-go="conversation" aria-label="History">${icon("clockCounterClockwise", { size: 17 })}</button>
           <button type="submit" class="askbar-send" aria-label="Send">${icon("arrowUp", { size: 17 })}</button>
@@ -112,9 +115,16 @@ export function mount(root, ctx) {
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   });
-  root.querySelectorAll(".askbar-act").forEach((b) => {
+  root.querySelectorAll(".askbar-act[data-go]").forEach((b) => {
     b.addEventListener("click", () => ctx.goto(b.dataset.go));
   });
+
+  // widget board: premade widgets; the ask-bar button toggles edit mode
+  const boardHost = root.querySelector(".standby-widgets");
+  const board = mountBoard(boardHost, ctx);
+  const widgetsBtn = root.querySelector('[data-act="widgets"]');
+  widgetsBtn.addEventListener("click", () => board.toggleEdit());
+  boardHost.addEventListener("wb-edit", (e) => widgetsBtn.classList.toggle("on", e.detail));
 
   // ── rotating placeholder ──────────────────────────────────────────────
   const shuffled = EXAMPLES.slice().sort(() => Math.random() - 0.5);
@@ -226,6 +236,7 @@ export function mount(root, ctx) {
     document.removeEventListener("keydown", onKey);
     if (raf) cancelAnimationFrame(raf);
     if (mic) { try { mic.stop(); } catch { /* ignore */ } }
+    board.destroy();
     orb.destroy();
   };
 }

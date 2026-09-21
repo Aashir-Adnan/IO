@@ -83,6 +83,19 @@ export function Api(base = "") {
         body: JSON.stringify({ path: path || null }),
       }));
     },
+    async tasks() { return j(await fetch(`${b}/tasks`)); },
+    async alerts() { return j(await fetch(`${b}/alerts`)); },
+    async widgets() { return j(await fetch(`${b}/widgets`)); },
+    async saveWidgets(doc) {
+      return j(await fetch(`${b}/widgets`, {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(doc),
+      }));
+    },
+    async weatherSearch(q) { return j(await fetch(`${b}/weather/search?q=` + encodeURIComponent(q))); },
+    async weather(lat, lon) { return j(await fetch(`${b}/weather?lat=${lat}&lon=${lon}`)); },
+    async gmail() { return j(await fetch(`${b}/gmail`)); },
+    async gmailConnect() { return j(await fetch(`${b}/gmail/connect`, { method: "POST" })); },
+    async gmailImportant() { return j(await fetch(`${b}/gmail/important`)); },
     async sync() { return j(await fetch(`${b}/sync`)); },
     async syncNow() { return j(await fetch(`${b}/sync/now`, { method: "POST" })); },
     async syncSignIn() { return j(await fetch(`${b}/sync/signin`, { method: "POST" })); },
