@@ -1,5 +1,24 @@
 # Current session
 
+## 2026-09-21 — status UI shipped; A / D / F specs written (branch `io-window-glass`)
+
+- **S — Claude-style live status: DONE, uncommitted.** `frontend/progress.js`
+  (`thoughtLabel`, TDD: `tests/test_frontend_progress.py`), `conversation.js`
+  (collapsible `.turn-pending`, stage cross-fade, collapses to "Thought for Ns"
+  `<details>`), `app.css` (pulse glyph, `.shimmer`, reduced-motion fallback,
+  composer overlay shares it). Verified in the browser pane with a stubbed
+  `api.sendText`; Docker was down so the full stack/suite was not run.
+- **Specs written, awaiting user review (no plans yet):**
+  `docs/superpowers/specs/2026-09-21-ollama-optional-design.md` (A),
+  `…-self-update-design.md` (D), `…-memory-sync-design.md` (F, Supabase,
+  server-readable, memories+affiliations+tasks+chat).
+- **Not started** (open questions in backlog): C widget board, B pending-tasks
+  window, E native phone app (Flutter/RN; needs A + F first).
+- Next: user reviews specs → `writing-plans` per spec. Suggested order
+  A → D → F → C/B → E.
+
+---
+
 **"IO Glass" reskin** — on branch **`io-window-glass`** (from the acrylic
 commit `346aa3c`; NOT merged). Replaced the dark Nocturne shell wholesale with
 the light pearl-glass look from `docs/design/IO Glass.dc.html` (imported from
