@@ -14,6 +14,13 @@ from io_assistant.files.paths import AccessGate
 from io_assistant.db import models as m
 
 
+@pytest.fixture(autouse=True)
+def _no_real_embedder(monkeypatch, stub_embedder):
+    # hermetic: never reach Ollama or load the built-in model
+    import io_assistant.orchestrator as orch
+    monkeypatch.setattr(orch, "Embedder", lambda cfg: stub_embedder)
+
+
 @pytest.fixture
 def files_config(config, tmp_path):
     config.files = FilesConfig(enabled=True, allowlist_roots=[str(tmp_path)])

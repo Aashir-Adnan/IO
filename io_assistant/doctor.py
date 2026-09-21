@@ -4,6 +4,7 @@ import importlib.util
 import os
 import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 from io_assistant.config import Config, whisper_model_for
 
@@ -73,14 +74,41 @@ def _check_backend(config: Config) -> Check:
     return Check("backend", ok, f"local: {want} {'present' if ok else 'not pulled'}")
 
 
+def _builtin_ready(config: Config) -> tuple[bool, str]:
+    """(usable, detail) for the in-process embedder without loading the model."""
+    if importlib.util.find_spec("fastembed") is None:
+        return False, "fastembed not installed"
+    cache = Path(os.path.expanduser(config.backend.models_dir))
+    cached = cache.is_dir() and any(cache.iterdir())
+    return True, "model cached" if cached else (
+        "model downloads on first use (~520 MB); run `io doctor --fetch-embedder`")
+
+
+def fetch_embedder(config: Config) -> str:
+    """Download/load the built-in model now; returns a status line."""
+    from io_assistant.backend.embed_builtin import BuiltinEmbedder
+
+    BuiltinEmbedder(config).embed(["warm up"])
+    return "built-in embedder ready"
+
+
 def _check_embeddings(config: Config) -> Check:
-    try:
-        tags = _ollama_tags(config)
-    except Exception as e:  # noqa: BLE001
-        return Check("embeddings", False, f"Ollama unreachable ({str(e)[:60]})")
+    mode = config.backend.embedder
     want = config.backend.embed_model
-    ok = any(t.startswith(want) for t in tags)
-    return Check("embeddings", ok, f"{want} {'present' if ok else 'not pulled'}")
+    if mode != "builtin":
+        try:
+            tags = _ollama_tags(config)
+            if any(t.startswith(want) for t in tags):
+                return Check("embeddings", True, f"ollama: {want} present")
+            ollama_note = f"ollama up but {want} not pulled"
+        except Exception as e:  # noqa: BLE001
+            ollama_note = f"Ollama unreachable ({str(e)[:40]})"
+        if mode == "ollama":
+            return Check("embeddings", False, ollama_note)
+    else:
+        ollama_note = "ollama not used"
+    ok, detail = _builtin_ready(config)
+    return Check("embeddings", ok, f"built-in: {detail} ({ollama_note})")
 
 
 def _check_whisper(config: Config) -> Check:

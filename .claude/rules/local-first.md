@@ -29,6 +29,12 @@ non-local host — is a bug.
    container. Only the configured endpoint, only when `web.enabled = true`.
    Not implemented yet; the config only accepts `"searxng"` / `"none"` today.
 
+6. **HuggingFace model download** — only when `backend.embedder` is `"builtin"`
+   (or `"auto"` and Ollama is unreachable) AND the fastembed model is not yet in
+   `backend.models_dir`. A one-time GET of `nomic-ai/nomic-embed-text-v1.5`
+   (~520 MB); nothing about the user is sent. Once cached, embedding is fully
+   offline. `io doctor --fetch-embedder` triggers it deliberately.
+
 `web.enabled = false` (the default) ⇒ the `web` action is not registered, the
 routing pre-check is skipped, and general-knowledge questions stay `unknown`
 exactly as before — no web tables are touched, no sockets opened.

@@ -105,6 +105,28 @@ function Test-WebEnabled {
   return $false
 }
 
+function Get-BackendSetting($key, $default) {
+  # crude TOML peek: uncommented `key = "value"` inside [backend]
+  $cfg = Join-Path $Root "config.toml"
+  if (-not (Test-Path $cfg)) { return $default }
+  $inB = $false
+  foreach ($line in Get-Content $cfg) {
+    $t = $line.Trim()
+    if ($t -match '^\[backend\]') { $inB = $true; continue }
+    if ($t -match '^\[') { $inB = $false; continue }
+    if ($inB -and $t -match ('^' + $key + '\s*=\s*"([^"]*)"')) { return $Matches[1] }
+  }
+  return $default
+}
+
+function Test-NeedsOllama {
+  # Ollama is only needed for the local/hybrid chat model or as the embedder
+  $provider = Get-BackendSetting "provider" "local"
+  $embedder = Get-BackendSetting "embedder" "auto"
+  if ($provider -ne "anthropic") { return $true }
+  return ($embedder -eq "ollama")
+}
+
 function Ensure-Postgres {
   Info "PostgreSQL (docker compose up -d db)"
   docker compose up -d db
@@ -132,7 +154,8 @@ function Ensure-Postgres {
 function Do-Up {
   New-Item -ItemType Directory -Force $StateDir | Out-Null
   Ensure-Postgres
-  Ensure-Ollama
+  if (Test-NeedsOllama) { Ensure-Ollama }
+  else { Ok "Ollama not needed (provider=anthropic, built-in embedder)" }
 
   Info "alembic upgrade head"
   $mig = & uv run alembic upgrade head 2>&1

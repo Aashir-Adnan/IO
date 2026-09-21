@@ -1,5 +1,25 @@
 # Completed (newest first)
 
+## 2026-09-21 — Ollama-optional + Claude-style live status
+Branch `io-window-glass`. Spec `docs/superpowers/specs/2026-09-21-ollama-optional-design.md`,
+plan `docs/superpowers/plans/2026-09-21-ollama-optional.md` (5 tasks).
+- **Embedder chain** (`backend/embed.py`): `[backend] embedder = auto|ollama|
+  builtin`; Ollama first (60 s backoff on failure), else `backend/embed_builtin.py`
+  (fastembed, same nomic v1.5, 768-d, ~520 MB one-time download into
+  `models_dir`), else lexical via `embed_or_none` at resolver/retrieve/writer/
+  caption/file-search. `backend/backfill.py:EmbeddingBackfiller` fills NULL
+  embeddings (started in `create_app` only when it owns its engine).
+- `dev.ps1`/`setup.ps1` skip Ollama for provider=anthropic; `io doctor` reports
+  the embedder; `io doctor --fetch-embedder`. `local-first.md` case 6.
+- **Verified live**: provider=anthropic, Ollama stopped: store + query via
+  `POST /utterance` on a scratch DB, embeddings filled by the built-in model.
+- **Not verified**: cosine(builtin, Ollama) > 0.98 (opt-in test; no Ollama here).
+- Suite: 539 pass / 13 skip. Deselected: `test_standby_panel` (pre-existing
+  pollution) and `test_records_browse_edit_delete` (calendar rot: hardcodes
+  "10th of september" = 2026, now rolls to 2027).
+- **Live status UI** (`frontend/progress.js`, `conversation.js`, `app.css`):
+  shimmer stage, collapsible steps, "Thought for Ns".
+
 ## 2026-09-10/11 — Tasks & Collections
 Branch `io-window-glass`. Spec `docs/superpowers/specs/
 2026-09-10-tasks-and-collections-design.md`, plan `docs/superpowers/plans/

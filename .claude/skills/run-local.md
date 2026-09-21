@@ -135,3 +135,11 @@ Exit 0 only when everything the current config needs is present.
 Set on the Ollama process (not IO): `OLLAMA_MAX_LOADED_MODELS=1`,
 `OLLAMA_NUM_PARALLEL=1` — IO never runs two models concurrently. See
 `rules/resource-budget.md`.
+
+
+## Without Ollama
+
+With `[backend] provider = "anthropic"` Ollama is optional: `dev.ps1 up` skips
+it and `io doctor` reports the built-in embedder (see
+`.claude/knowledge/model-backends.md`, "Embedder chain"). First use downloads
+~520 MB once; run `uv run io doctor --fetch-embedder` to do it up front.

@@ -391,13 +391,18 @@ def create_app(
 
     from io_assistant.backend.backfill import EmbeddingBackfiller
 
-    backfiller = EmbeddingBackfiller(factory, orchestrator._embedder)
-    backfiller.start()
-    app.state.backfiller = backfiller
+    app.state.backfiller = None
+    embedder = getattr(orchestrator, "_embedder", None)
+    # only when create_app owns its engine (production); tests inject theirs and
+    # share one connection, which a background thread must not touch
+    if engine is None and embedder is not None:
+        backfiller = EmbeddingBackfiller(factory, embedder)
+        backfiller.start()
+        app.state.backfiller = backfiller
 
-    @app.on_event("shutdown")
-    def _stop_backfiller():
-        backfiller.stop()
+        @app.on_event("shutdown")
+        def _stop_backfiller():
+            backfiller.stop()
 
     app.state.index_queue = None
     if config.files.enabled:

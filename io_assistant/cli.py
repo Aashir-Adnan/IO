@@ -145,12 +145,19 @@ def listen(passive: bool = typer.Option(None, help="hands-free VAD mode")) -> No
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    fetch_embedder: bool = typer.Option(
+        False, "--fetch-embedder",
+        help="Download the built-in embedder model now (no Ollama needed)."),
+) -> None:
     """Check the local stack (Postgres, pgvector, models, Whisper, Piper)."""
-    from io_assistant.doctor import format_report, run_checks
+    from io_assistant import doctor as d
 
-    checks = run_checks(load_config())
-    print(format_report(checks))
+    config = load_config()
+    if fetch_embedder:
+        print(d.fetch_embedder(config))
+    checks = d.run_checks(config)
+    print(d.format_report(checks))
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 

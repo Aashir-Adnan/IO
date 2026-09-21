@@ -77,3 +77,28 @@ in Ollama `format: json` mode is brittle about prompt shape:
   **rate** (≥ 0.75), not every case. If that drops, the light profile has
   regressed — bump to `quality`/`hybrid`.
 Claude (the `anthropic` backend) handles either prompt shape fine.
+
+
+## Embedder chain (Ollama is optional)
+
+Anthropic has no embeddings API, so `Embedder` (`backend/embed.py`) is a chain,
+picked by `[backend] embedder = "auto" | "ollama" | "builtin"` (default `auto`):
+
+1. **Ollama** `nomic-embed-text` — tried first in `auto`; a connection failure
+   marks it down for 60 s (`OllamaUnavailable`).
+2. **Built-in** `backend/embed_builtin.py` — `fastembed` running the *same*
+   `nomic-ai/nomic-embed-text-v1.5` (768-d, interchangeable vectors, no
+   backfill needed when switching). Model (~520 MB) downloads once into
+   `models_dir` (`~/.local/share/io/models`); `io doctor --fetch-embedder`
+   pre-fetches. Set `builtin_embed_model` to the `-Q` variant for ~130 MB.
+3. **Lexical** — if neither works, `embed_or_none` returns `None`; the resolver,
+   `retrieve_subquery`, `writer`, `caption` and file search skip the vector
+   branch (fuzzy + `pg_trgm` remain) and store `embedding = NULL`.
+   `file_chunks.embedding` is NOT NULL, so file *indexing* fails until an
+   embedder exists (the `IndexQueue` logs and moves on).
+4. **Backfill** — `backend/backfill.py:EmbeddingBackfiller` (daemon thread,
+   started in `create_app`) fills NULL embeddings on people/places/items/
+   occasions/records every 5 min once an embedder is up.
+
+`dev.ps1` / `scripts/setup.ps1` only start/pull Ollama when `provider !=
+"anthropic"` or `embedder = "ollama"`.
