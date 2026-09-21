@@ -27,6 +27,7 @@ dependencies = [
     "pypdf>=6.18.0",
     "python-docx>=1.2.0",
     "pillow>=12.3.0",
+    "fastembed>=0.8.0",
 ]
 
 [project.scripts]
@@ -45,6 +46,7 @@ markers = [
     "ollama: requires a running Ollama (set IO_OLLAMA_TESTS=1)",
     "anthropic: requires ANTHROPIC_API_KEY (set IO_ANTHROPIC_TESTS=1)",
     "voice: requires local Whisper/Piper models (set IO_VOICE_TESTS=1)",
+    "builtin: requires downloading the fastembed model (set IO_BUILTIN_EMBED_TESTS=1)",
     "ui: Playwright DOM smoke (set IO_UI_TESTS=1; needs `uv run playwright install chromium`)",
 ]
 

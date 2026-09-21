@@ -19,13 +19,13 @@ provider (decided against for now).
 ## Design
 
 1. **Embedder chain.** New `[backend] embedder = "auto" | "ollama" | "builtin"`,
-   default `auto`. `Embedder` (the only class that changes) picks Ollama when a
-   cached probe (`GET /api/version`, 1 s timeout, re-probed every 60 s) succeeds,
+   default `auto`. `Embedder` (the only class that changes) tries Ollama first
+   (a connection failure marks it down and it is not retried for 60 s),
    otherwise a built-in in-process embedder: `fastembed` (ONNX) running
    `nomic-ai/nomic-embed-text-v1.5`. That is the same model and 768 dimensions as
    Ollama's `nomic-embed-text`, so **no migration and no backfill**; existing
    vectors stay valid. Text is embedded raw (no task prefix) on both paths, as
-   Ollama does today. Model files cache under `~/.local/share/io/models`.
+   Ollama does today. Model files cache under `~/.local/share/io/models`. `builtin_embed_model` may be set to `nomic-ai/nomic-embed-text-v1.5-Q` (~130 MB) to trade fidelity for size.
 2. **Lexical safety net.** If neither embedder works, `EmbedError` is caught at
    the vector call sites (`resolve/resolver.py` lookups, `query/retrieve.py`
    semantic branch). They fall back to the existing fuzzy + `pg_trgm` matching.
@@ -61,5 +61,5 @@ provider (decided against for now).
 
 - ONNX vs Ollama's GGUF quantisation gives near-identical, not bit-identical,
   vectors; the cosine test guards it.
-- First-use model download (~130 MB) needs network once; the fallback covers
+- First-use model download (~520 MB (fp32)) needs network once; the fallback covers
   the offline first run.

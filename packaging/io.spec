@@ -54,6 +54,10 @@ _VOICE_HIDDEN = [
     "piper", "piper.voice", "piper.phonemize_espeak",
 ]
 
+# built-in embedder (fastembed) — lets IO run without Ollama; model downloads on
+# first use into config.backend.models_dir.
+_EMBED_HIDDEN = ["fastembed", "tokenizers", "huggingface_hub"]
+
 EXCLUDES = ["reportlab", "pytest", "pyinstaller", "torch"]
 HOOKSPATH = [str(ROOT / "packaging" / "hooks")]
 
@@ -65,9 +69,9 @@ if __name__ != "__spec_probe__":
 
     _binaries = []
     _datas = [(str(ROOT / s), d) for s, d in DATAS]
-    _hidden = list(HIDDEN_IMPORTS) + list(_VOICE_HIDDEN)
+    _hidden = list(HIDDEN_IMPORTS) + list(_VOICE_HIDDEN) + list(_EMBED_HIDDEN)
     for pkg in ("piper", "faster_whisper", "sounddevice", "_sounddevice_data",
-                "ctranslate2", "onnxruntime", "av"):
+                "ctranslate2", "onnxruntime", "av", "fastembed"):
         d, b, h = collect_all(pkg)
         _datas += d
         _binaries += b
