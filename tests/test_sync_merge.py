@@ -10,7 +10,7 @@ from io_assistant.db import models as m
 from io_assistant.sync.engine import SyncEngine
 from io_assistant.sync.stores import FolderStore
 
-T0 = dt.datetime(2026, 9, 22, 9, 0, tzinfo=dt.timezone.utc)
+T0 = dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.timezone.utc)   # safely in the past (the engine clamps future timestamps)
 MIN = dt.timedelta(minutes=1)
 
 
