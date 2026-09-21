@@ -389,6 +389,16 @@ def create_app(
         def _stop_poller():
             tp.stop()
 
+    from io_assistant.backend.backfill import EmbeddingBackfiller
+
+    backfiller = EmbeddingBackfiller(factory, orchestrator._embedder)
+    backfiller.start()
+    app.state.backfiller = backfiller
+
+    @app.on_event("shutdown")
+    def _stop_backfiller():
+        backfiller.stop()
+
     app.state.index_queue = None
     if config.files.enabled:
         from io_assistant.files.paths import AccessDenied, AccessGate
