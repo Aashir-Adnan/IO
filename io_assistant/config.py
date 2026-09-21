@@ -133,6 +133,15 @@ class WebConfig(BaseModel):
     instant_ttl_min: int = 1440
 
 
+class UpdatesConfig(BaseModel):
+    # Self-update from the git remote (see rules/local-first.md, case 7).
+    enabled: bool = True
+    remote: str = "origin"
+    branch: str = ""          # "" = the branch currently checked out
+    interval_h: float = 6.0
+    repo_dir: str = ""        # "" = auto (source checkout, else CWD)
+
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -144,6 +153,7 @@ class Config(BaseModel):
     ui: UiConfig = UiConfig()
     files: FilesConfig = FilesConfig()
     web: WebConfig = WebConfig()
+    updates: UpdatesConfig = UpdatesConfig()
 
     @property
     def owner_name(self) -> str:
@@ -178,14 +188,29 @@ def config_source(path: str | Path | None = None) -> Path:
             return p
     return _candidate_config_paths()[-1]
 
+def deep_merge(base: dict, over: dict) -> dict:
+    """`over` wins; nested tables merge key by key."""
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+def _read_toml(p: Path) -> dict:
+    try:
+        return tomllib.loads(p.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"invalid TOML in {p}: {e}") from e
+
 def load_config(path: str | Path | None = None) -> Config:
     p = config_source(path)
     if not p.exists():
         raise ConfigError(f"config file not found: {p}")
-    try:
-        raw = tomllib.loads(p.read_text())
-    except tomllib.TOMLDecodeError as e:
-        raise ConfigError(f"invalid TOML in {p}: {e}") from e
+    raw = _read_toml(p)
+    # user overrides live in a gitignored file beside config.toml, so updates
+    # can change the shipped defaults without touching them
+    local = p.with_name("config.local.toml")
+    if local.exists():
+        raw = deep_merge(raw, _read_toml(local))
 
     # env overrides
     if env_db := os.environ.get("IO_DATABASE_URL"):
