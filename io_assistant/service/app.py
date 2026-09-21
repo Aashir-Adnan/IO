@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select, text
 from fastapi.staticfiles import StaticFiles
@@ -437,6 +437,25 @@ def create_app(
     def widgets_put(doc: WidgetsDoc):
         widget_store.save(app.state.widgets_path, doc)
         return {"ok": True}
+
+    from io_assistant.widgets.weather import WeatherClient
+
+    app.state.weather = WeatherClient()
+
+    def _weather_call(fn, *args):
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001 — network, bad payload
+            raise HTTPException(status_code=502,
+                                detail=f"Couldn't reach the weather service ({type(e).__name__}).")
+
+    @app.get("/weather/search")
+    def weather_search(q: str = ""):
+        return _weather_call(app.state.weather.search, q)
+
+    @app.get("/weather")
+    def weather_forecast(lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180)):
+        return _weather_call(app.state.weather.forecast, lat, lon)
 
     from io_assistant.widgets.tasks import alerts as widget_alerts, pending_tasks
 
