@@ -438,6 +438,22 @@ def create_app(
         widget_store.save(app.state.widgets_path, doc)
         return {"ok": True}
 
+    from io_assistant.widgets.tasks import alerts as widget_alerts, pending_tasks
+
+    @app.get("/tasks")
+    def tasks_pending(limit: int = 50):
+        import datetime as _dt
+
+        with factory() as s:
+            return pending_tasks(s, _dt.datetime.now(_dt.timezone.utc), limit=max(1, min(limit, 200)))
+
+    @app.get("/alerts")
+    def alerts_list():
+        import datetime as _dt
+
+        with factory() as s:
+            return widget_alerts(s, _dt.datetime.now(_dt.timezone.utc))
+
     from io_assistant.sync.manager import SyncManager
 
     sync = SyncManager(config, factory)
