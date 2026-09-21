@@ -1,3 +1,4 @@
+import { syncMessage } from "./sync.js";
 import { createStore } from "./state.js";
 import { Api } from "./api.js";
 import { icon } from "./vendor/icons.js";
@@ -61,7 +62,22 @@ const ctx = {
   goto: (v) => store.set({ view: v }),
   openSettings: () => settings && settings.open(),
   setUpdate: (u) => paintUpdate(u),
+  setSync: (s) => paintSync(s),
 };
+
+// Memory-sync dot in the topbar; Settings → Account has the detail.
+function paintSync(s) {
+  store.set({ sync: s });
+  const dot = document.getElementById("sync-dot");
+  if (!dot) return;
+  const m = syncMessage(s);
+  dot.hidden = !s || !s.enabled;
+  dot.dataset.state = m.state;
+  dot.title = m.text;
+}
+async function checkSync() {
+  try { paintSync(await api.sync()); } catch { /* offline, or an older server */ }
+}
 
 // "Update available" pill in the topbar; Settings → Updates has the detail.
 function paintUpdate(u) {
@@ -209,6 +225,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch { /* fresh */ }
   route();
   document.getElementById("update-pill").onclick = () => settings.open();
+  checkSync();
+  setInterval(checkSync, 30 * 1000);
   setTimeout(checkUpdate, 20000);           // after the service's first fetch
   setInterval(checkUpdate, 10 * 60 * 1000);
 });

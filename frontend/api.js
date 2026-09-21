@@ -83,6 +83,10 @@ export function Api(base = "") {
         body: JSON.stringify({ path: path || null }),
       }));
     },
+    async sync() { return j(await fetch(`${b}/sync`)); },
+    async syncNow() { return j(await fetch(`${b}/sync/now`, { method: "POST" })); },
+    async syncSignIn() { return j(await fetch(`${b}/sync/signin`, { method: "POST" })); },
+    async syncSignOut() { return j(await fetch(`${b}/sync/signout`, { method: "POST" })); },
     async update(refresh = false) { return j(await fetch(`${b}/update${refresh ? "?refresh=1" : ""}`)); },
     async applyUpdate() { return j(await fetch(`${b}/update/apply`, { method: "POST" })); },
 

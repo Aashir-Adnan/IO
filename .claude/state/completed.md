@@ -1,5 +1,20 @@
 # Completed (newest first)
 
+## 2026-09-22 — Memory sync via Google Drive (desktop side)
+Spec `docs/superpowers/specs/2026-09-21-memory-sync-design.md` (revised: Drive, not
+Supabase), plan `docs/superpowers/plans/2026-09-22-memory-sync.md`. Knowledge:
+`.claude/knowledge/memory-sync.md` (includes the one-time Google Cloud setup).
+Migration 0010 (`sync_id`/`synced_at`, tombstones, aliases, state), delete hook,
+codec, `SyncEngine` (push/pull/snapshot; LWW, sticky completion, tombstones,
+resolver-based duplicate collapse), `FolderStore` + `GoogleDriveStore`, OAuth
+(`sync/auth.py`, keychain), `SyncManager` + `/sync*` endpoints, Settings → Account
++ topbar dot. Verified: engine on 3 real databases through a real FolderStore;
+Drive store against a fake Drive client; UI states in the browser pane.
+**Not verified:** real Google sign-in and a real Drive round trip (needs the user's
+Google Cloud OAuth client; opt-in test `IO_GDRIVE_TESTS=1`), and a live
+two-machine sync. Deviation from spec: an exact `updated_at` tie is a no-op (no
+device-id tie-break). Suite: 626 pass / 14 skip. **Not built:** the phone client (E).
+
 ## 2026-09-21 — Self-update from GitHub
 Spec `docs/superpowers/specs/2026-09-21-self-update-design.md`, plan
 `docs/superpowers/plans/2026-09-21-self-update.md`. See knowledge
