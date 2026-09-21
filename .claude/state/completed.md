@@ -1,5 +1,18 @@
 # Completed (newest first)
 
+## 2026-09-22 — Home-screen widgets + pending-tasks window
+Spec `docs/superpowers/specs/2026-09-22-home-widgets-design.md`, plan
+`docs/superpowers/plans/2026-09-22-home-widgets.md`; knowledge
+`.claude/knowledge/home-widgets.md`. Snap-grid board (S/M/L, drag/resize/add/remove,
+per-device `widgets.json`) with four premade widgets (To-do, Weather via Open-Meteo,
+Time zones, Important = IO alerts + Gmail metadata), `/tasks /alerts /weather* /gmail*
+/widgets` endpoints, rules cases 9-10, and the small always-on-top tasks window
+(`#tasks`, `runner.open_tasks_window`). Verified: layout/tz math (node), endpoints on
+real Postgres, weather/Gmail parsers on canned data, one live Open-Meteo call, board +
+all widget states + edit mode (drag via synthetic events) + light/dark + the `#tasks`
+view in the browser pane. Suite: 677 pass / 14 skip. **Not verified:** the native window's always-on-top/position,
+real Gmail (needs the user's Google Cloud project with the Gmail API enabled).
+
 ## 2026-09-22 — Memory sync via Google Drive (desktop side)
 Spec `docs/superpowers/specs/2026-09-21-memory-sync-design.md` (revised: Drive, not
 Supabase), plan `docs/superpowers/plans/2026-09-22-memory-sync.md`. Knowledge:

@@ -1267,3 +1267,14 @@ a:hover { color: var(--color-accent-300); }
 .alerts.size-S .al-mail { display: none; }
 .standby-widgets, .wcard-b { scrollbar-width: none; }
 .standby-widgets::-webkit-scrollbar, .wcard-b::-webkit-scrollbar { display: none; }
+
+/* ── small tasks window (#tasks) ─────────────────────────────────────── */
+:root[data-mode="tasks"] #topbar { display: none; }
+:root[data-mode="tasks"] .win { border-radius: 14px; }
+.tw { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 16px 12px; }
+.tw-h { flex: none; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tw-t { font: 400 9.5px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.tw-x { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; color: var(--ink-3); }
+.tw-x:hover { color: var(--ink); background: var(--fill); }
+.tw-b { flex: 1; min-height: 0; overflow: auto; scrollbar-width: none; }
+.tw-b::-webkit-scrollbar { display: none; }

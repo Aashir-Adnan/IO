@@ -12,7 +12,8 @@
   `docs/superpowers/plans/2026-09-21-ollama-optional.md`. **D — self-update: DONE**
   (see completed.md). **F — memory sync (Drive), desktop side: DONE** (see
   completed.md; user must do the Google Cloud setup to use Drive).
-  Next: C widget board / B pending-tasks window (open questions in backlog), E phone.
+  **C widget board + B tasks window: DONE** (see completed.md). Remaining: E phone app
+  (native rewrite, needs its own brainstorm/plan; depends on A + F).
 - **Specs (approved):**
   `docs/superpowers/specs/2026-09-21-ollama-optional-design.md` (A),
   `…-self-update-design.md` (D), `…-memory-sync-design.md` (F, Supabase,

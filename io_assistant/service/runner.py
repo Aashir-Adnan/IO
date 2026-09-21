@@ -23,6 +23,62 @@ __all__ = ["run_service", "open_window", "error_dialog", "raise_window"]
 _WINDOW = None
 
 
+# The small always-on-top pending-tasks window (None until opened / after close).
+_TASKS_WINDOW = None
+_TASKS_SIZE = (340, 520)
+
+
+class TasksApi:
+    """js_api of the tasks window: just a close button (the window is frameless)."""
+
+    def close(self):
+        w = _TASKS_WINDOW
+        if w is not None:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+
+
+def open_tasks_window(app_url: str) -> bool:
+    """Open the compact pending-tasks window, or focus it if it is already open.
+    Frameless, always on top, bottom-right of the screen, and - like every IO
+    window - not draggable. Route `#tasks` renders only the task list."""
+    global _TASKS_WINDOW
+    import webview
+
+    if _TASKS_WINDOW is not None:
+        try:
+            _TASKS_WINDOW.restore()
+            _TASKS_WINDOW.show()
+            return True
+        except Exception:
+            _TASKS_WINDOW = None
+    w, h = _TASKS_SIZE
+    x = y = None
+    try:
+        scr = webview.screens[0]
+        x, y = scr.width - w - 24, scr.height - h - 72      # 72: room for the taskbar
+    except Exception:
+        pass
+    win = webview.create_window(
+        "IO tasks", app_url.split("#")[0] + "#tasks", width=w, height=h, x=x, y=y,
+        on_top=True, frameless=True, resizable=False, easy_drag=False,
+        background_color="#12131b", js_api=TasksApi(),
+    )
+
+    def _closed():
+        global _TASKS_WINDOW
+        _TASKS_WINDOW = None
+
+    try:
+        win.events.closed += _closed
+    except Exception:
+        pass
+    _TASKS_WINDOW = win
+    return True
+
+
 def raise_window() -> bool:
     """Bring the desktop window to the foreground. False if this process has
     no window (headless service)."""
@@ -167,6 +223,12 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
 
         def effects(self):
             return dict(state)
+
+        def open_tasks(self):
+            try:
+                return open_tasks_window(url)
+            except Exception:
+                return False
 
     geo = _load_geometry()
     kw = dict(

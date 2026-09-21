@@ -213,14 +213,8 @@
   press-to-start / press-to-stop).
 
 
-## Requested 2026-09-21 (not yet specced)
+## Requested 2026-09-21 (E is still open; C and B shipped 2026-09-22)
 
-- **C — Home-screen widget board**: user-placeable, premade widgets (weather,
-  time zones, to-do, important emails/notifications). Open: weather source
-  (needs a new sanctioned outbound call), email/notification source, layout
-  model (grid vs free placement).
-- **B — Small pending-tasks window**: second pywebview window. Open:
-  always-on-top vs normal, refresh source (reuse C's to-do widget).
 - **E — Phone app**: native cross-platform rewrite (Flutter vs React Native
   undecided), standalone, depends on A (API-key-only) and F (sync). Prompts and
   `decide_cases.json` are the shared conformance contract with the Python core.

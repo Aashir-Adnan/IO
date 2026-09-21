@@ -7,6 +7,7 @@ import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
 import { mount as mountLibrary } from "./views/library.js";
 import { mount as mountRecords } from "./views/records.js";
+import { mount as mountTasks } from "./views/tasks.js";
 import { Settings } from "./components/settings.js";
 
 const VIEWS = {
@@ -15,6 +16,7 @@ const VIEWS = {
   conversation: mountConversation,
   library: mountLibrary,
   records: mountRecords,
+  tasks: mountTasks,
   // legacy aliases — the library view covers both
   gallery: mountLibrary,
   files: mountLibrary,
@@ -191,6 +193,13 @@ async function applyWindowEffects() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ctx = ctx;
+  // the small always-on-top tasks window: just the task list, no shell
+  if (location.hash === "#tasks") {
+    document.documentElement.dataset.mode = "tasks";
+    store.set({ view: "tasks" });
+    route();
+    return;
+  }
   applyWindowEffects();
   setTimeout(applyWindowEffects, 800);   // the backdrop is applied on 'shown'
   settings = Settings(
