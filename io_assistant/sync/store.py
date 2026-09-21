@@ -1,0 +1,13 @@
+"""Where sync files live. Paths are relative, POSIX-style, e.g.
+`dev-<device>/batch-00000042.json.gz`. Implementations: FolderStore (a plain
+directory — tests, or any OneDrive/Dropbox folder) and GoogleDriveStore."""
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class SyncStore(Protocol):
+    def put(self, path: str, data: bytes) -> None: ...
+    def get(self, path: str) -> bytes: ...
+    def list(self, prefix: str) -> list[str]: ...
+    def delete(self, path: str) -> None: ...

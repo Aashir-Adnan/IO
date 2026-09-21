@@ -390,3 +390,64 @@ def ui_page():
         browser.close()
         pw.stop()
         srv.shutdown()
+
+
+# --------------------------------------------------------------------------- #
+# Multi-device sync: separate real databases, one per "device".
+# --------------------------------------------------------------------------- #
+_SYNC_DBS = ("io_sync_a", "io_sync_b", "io_sync_c")
+
+
+@pytest.fixture(scope="session")
+def _sync_db_urls():
+    """Create (if missing) and migrate one database per simulated device."""
+    if not TEST_DB_URL:
+        pytest.skip("IO_TEST_DATABASE_URL not set")
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    base = make_url(TEST_DB_URL)
+    admin = create_engine(base.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    urls = {}
+    with admin.connect() as conn:
+        for name in _SYNC_DBS:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": name}).scalar()
+            if not exists:
+                conn.execute(text(f'CREATE DATABASE "{name}"'))
+            urls[name] = base.set(database=name).render_as_string(hide_password=False)
+    admin.dispose()
+
+    root = Path(__file__).resolve().parents[1]
+    for url in urls.values():
+        eng = make_engine(url)
+        with eng.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        eng.dispose()
+        cfg = AlembicConfig(str(root / "alembic.ini"))
+        cfg.set_main_option("script_location", str(root / "io_assistant" / "db" / "migrations"))
+        cfg.set_main_option("sqlalchemy.url", url)
+        command.upgrade(cfg, "head")
+    return urls
+
+
+@pytest.fixture
+def devices(_sync_db_urls):
+    """{"a": sessionmaker, "b": ..., "c": ...} — real committing sessions on
+    three empty, fully migrated databases (emptied before each test)."""
+    out, engines = {}, []
+    for key, name in zip("abc", _SYNC_DBS):
+        eng = make_engine(_sync_db_urls[name])
+        engines.append(eng)
+        with eng.begin() as conn:
+            tables = [r[0] for r in conn.execute(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                "AND tablename <> 'alembic_version'"))]
+            conn.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables)
+                              + " RESTART IDENTITY CASCADE"))
+        out[key] = make_session_factory(eng)
+    yield out
+    for eng in engines:
+        eng.dispose()
