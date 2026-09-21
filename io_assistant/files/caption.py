@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.config import FilesConfig, ResolverConfig
 from io_assistant.db import models as m
 from io_assistant.extract.extractor import Extractor
@@ -106,14 +107,14 @@ def apply_caption(session, path: Path, text: str, source: str, *,
             oid = existing.id
         else:
             obj = m.Occasion(name=occ.name)
-            obj.embedding = embedder.embed_one(occ.name)
+            obj.embedding = embed_or_none(embedder, occ.name)
             session.add(obj)
             session.flush()
             oid = obj.id
         index.link_entity(session, node.id, "occasion", oid, source="caption")
         linked.append(("occasion", oid))
 
-    node.embedding = embedder.embed_one(text)
+    node.embedding = embed_or_none(embedder, text)
     session.flush()
 
     # tokenised tags — the fast fuzzy layer. Attach entity ids where they

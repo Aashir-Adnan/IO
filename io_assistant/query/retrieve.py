@@ -6,6 +6,7 @@ from typing import Literal
 
 from sqlalchemy import select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.query.compile import (
     _TARGET_MODEL,
     compile_count,
@@ -78,8 +79,8 @@ def retrieve_subquery(
         for obj in structured
     }
 
-    if sq.semantic_hint:
-        vec = embedder.embed_one(sq.semantic_hint)
+    vec = embed_or_none(embedder, sq.semantic_hint) if sq.semantic_hint else None
+    if vec is not None:
         dist = model.embedding.cosine_distance(vec).label("dist")
         stmt = select(model, dist).where(model.embedding.isnot(None))
         if sq.time_window is not None:

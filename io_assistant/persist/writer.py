@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.db import models as m
 from io_assistant.models_domain import (
     ExtractionResult,
@@ -227,7 +228,7 @@ def _write(
             name=occ.name,
             date=dr.value.date() if dr.value is not None else None,
         )
-        obj.embedding = embedder.embed_one(occ.name)
+        obj.embedding = embed_or_none(embedder, occ.name)
         session.add(obj)
         session.flush()
         occasion_ids[occ.name.lower()] = obj.id
@@ -277,8 +278,8 @@ def _write(
             attributes=rec.attributes,
             source_utterance_id=utterance_id,
         )
-        row.embedding = embedder.embed_one(
-            (rec.title + "\n" + (rec.body or "")).strip()
+        row.embedding = embed_or_none(
+            embedder, (rec.title + "\n" + (rec.body or "")).strip()
         )
         session.add(row)
         session.flush()
