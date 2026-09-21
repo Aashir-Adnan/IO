@@ -48,6 +48,7 @@ from io_assistant.service.panels import (
     entity_panel, record_brief, records_list, standby_panel,
 )
 from io_assistant.service.voice import VoiceModels, VoiceUnavailable
+from io_assistant.widgets.store import WidgetsDoc
 
 __all__ = ["create_app"]
 
@@ -423,6 +424,19 @@ def create_app(
         @app.on_event("shutdown")
         def _stop_updater():
             updater.stop()
+
+    from io_assistant.widgets import store as widget_store
+
+    app.state.widgets_path = widget_store.default_path()
+
+    @app.get("/widgets")
+    def widgets_get():
+        return widget_store.load(app.state.widgets_path) or {"layout": None, "settings": {}}
+
+    @app.put("/widgets")
+    def widgets_put(doc: WidgetsDoc):
+        widget_store.save(app.state.widgets_path, doc)
+        return {"ok": True}
 
     from io_assistant.sync.manager import SyncManager
 
