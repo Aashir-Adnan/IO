@@ -36,10 +36,16 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_secure_storage: ^9.2.2
   http: ^1.2.2
+  sqflite: ^2.4.2
+  uuid: ^4.6.0
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # SQLite over FFI — real engine, no platform channel, so tests run against
+  # a real database (test-discipline.md) without a device/emulator.
+  sqflite_common_ffi: ^2.3.7+1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
