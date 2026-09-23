@@ -22,7 +22,11 @@ const _tables = {
 };
 
 class EntityResolver {
-  final Database db;
+  // DatabaseExecutor (not the concrete Database), and mutable: persist.dart's
+  // write pass rebinds this to the active transaction for its duration, so
+  // the same resolver instance (subclass and all — see tests) runs inside
+  // the atomic scope without persist.dart needing to know its concrete type.
+  DatabaseExecutor db;
   final int fuzzyThreshold;
   EntityResolver(this.db, {this.fuzzyThreshold = 92});
 
