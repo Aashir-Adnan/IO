@@ -1,5 +1,40 @@
 # Completed (newest first)
 
+## 2026-09-23 — Phone app: onboarding + local core ports (Flutter/Dart)
+Branch `phone-app` (draft PR #2, targets `io-window-glass`). Spec
+`docs/superpowers/specs/2026-09-23-phone-app-design.md`, plans
+`docs/superpowers/plans/2026-09-23-phone-app-phase0-1.md` and
+`…-phone-app-dart-ports.md`.
+- **Phase 0**: desktop opt-in token-gated remote-access middleware
+  (`ServiceConfig.remote_token`), so the phone can reach `/web` over the
+  user's own network later. `local-first.md` case 11.
+- **Phase 1**: Flutter project scaffold (Android); secure API-key storage
+  (OS keystore via `flutter_secure_storage`) + onboarding screen that
+  validates the key against Anthropic before saving it.
+- **Dart ports** (line-by-line behavioral ports, TDD, mirroring the existing
+  Python pytest cases): `dates.dart` (date grounding — 2 real bugs found
+  porting: Dart's `~/` truncates vs Python's `//` floors; a "weekday buried in
+  junk text" case Python's fuzzy parser caught implicitly), `resolver.dart`
+  (entity resolution, lexical-only — no vector branch, matches A's degraded
+  mode), `persist.dart` (store pipeline: entity resolve/create, records,
+  links, default-today/roll-forward; real `db.transaction()` rollback
+  verified), `query.dart` (structured retrieval + `rows_to_json`/due-label
+  phrasing shape — record-target only, collections registry and
+  person/place/occasion direct targets deferred, noted inline as `ponytail:`).
+  Local SQLite schema mirrors migration 0010's shape exactly (same
+  `sync_id`/`synced_at`/`updated_at` columns) so the sync port has no
+  per-device translation to do.
+- **Verified**: 101 Dart tests pass (`flutter test`), clean `flutter analyze`,
+  all against a real FFI SQLite engine — no mocked DB, per test-discipline.md
+  adapted to this stack. Not verified: a real Android device/emulator (none
+  set up in this environment) or a real Anthropic key round-trip.
+- **Docker derailed a chunk of this session** — confirmed via file timestamps
+  (9/21, two days before this session) and Windows Update history (nothing
+  since 9/17) that the corruption predated today entirely; fixed by
+  uninstall + rename-the-corrupted-folder + reinstall. Desktop DB-backed
+  tests were not re-verified this session as a result — do that next before
+  trusting anything DB-related from earlier commits blindly.
+
 ## 2026-09-22 — Home-screen widgets + pending-tasks window
 Spec `docs/superpowers/specs/2026-09-22-home-widgets-design.md`, plan
 `docs/superpowers/plans/2026-09-22-home-widgets.md`; knowledge
