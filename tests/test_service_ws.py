@@ -21,8 +21,15 @@ def test_ws_roundtrip(config, fake_backend, db, monkeypatch):
     with TestClient(app) as c:
         with c.websocket_connect("/ws") as ws:
             ws.send_json({"text": "note: ws note"})
-            reply = ws.receive_json()
+            stages = []
+            while True:
+                reply = ws.receive_json()
+                if reply["type"] == "progress":
+                    stages.append(reply["stage"])
+                    continue
+                break
     assert reply["type"] == "answer" and reply["kind"] == "ack"
+    assert "Understanding what you said" in stages   # progress was streamed first
     assert db.query(m.Record).filter_by(title="ws note").count() == 1
 
 

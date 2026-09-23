@@ -6,6 +6,7 @@ from typing import Literal
 from rapidfuzz import fuzz
 from sqlalchemy import func, or_, select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.config import ResolverConfig
 from io_assistant.db import models as m
 
@@ -108,20 +109,22 @@ class EntityResolver:
         if best_id is not None and best_score >= self.cfg.fuzzy_threshold:
             return ResolveOutcome(best_id, False, False, None, None)
 
-        # 3. vector: cosine search, similarity = 1 - distance
-        vec = self.embedder.embed_one(name)
-        dist = model.embedding.cosine_distance(vec).label("dist")
-        vstmt = (
-            select(model.id, name_col, dist)
-            .where(model.embedding.isnot(None))
-            .order_by(dist.asc())
-            .limit(1)
-        )
-        vrow = self.session.execute(vstmt).first()
-        if vrow is not None:
-            similarity = 1.0 - float(vrow[2])
-            if similarity >= self.cfg.vector_similarity_threshold:
-                return ResolveOutcome(None, False, True, vrow[0], vrow[1])
+        # 3. vector: cosine search, similarity = 1 - distance (skipped when no
+        #    embedder is available — exact + fuzzy above are the lexical path)
+        vec = embed_or_none(self.embedder, name)
+        if vec is not None:
+            dist = model.embedding.cosine_distance(vec).label("dist")
+            vstmt = (
+                select(model.id, name_col, dist)
+                .where(model.embedding.isnot(None))
+                .order_by(dist.asc())
+                .limit(1)
+            )
+            vrow = self.session.execute(vstmt).first()
+            if vrow is not None:
+                similarity = 1.0 - float(vrow[2])
+                if similarity >= self.cfg.vector_similarity_threshold:
+                    return ResolveOutcome(None, False, True, vrow[0], vrow[1])
 
         # 4. none
         return ResolveOutcome(None, True, False, None, None)
@@ -146,8 +149,10 @@ class EntityResolver:
         if best_id is not None and best_score >= self.cfg.fuzzy_threshold:
             return best_id
 
+        vec = embed_or_none(self.embedder, name)
+        if vec is None:
+            return None
         model, _name_col = self._model_col(entity_type)
-        vec = self.embedder.embed_one(name)
         dist = model.embedding.cosine_distance(vec).label("dist")
         row = self.session.execute(
             select(model.id, dist)
@@ -162,7 +167,7 @@ class EntityResolver:
     def create(self, entity_type: EntityType, name: str, aliases: list[str]) -> int:
         model, name_attr = _TABLES[entity_type]
         obj = model(**{name_attr: name, "aliases": list(aliases)})
-        obj.embedding = self.embedder.embed_one(name)
+        obj.embedding = embed_or_none(self.embedder, name)
         self.session.add(obj)
         self.session.flush()
         return obj.id

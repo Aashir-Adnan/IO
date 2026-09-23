@@ -11,5 +11,19 @@ services:
       - io_pgdata:/var/lib/postgresql/data
       - ./scripts/initdb:/docker-entrypoint-initdb.d
 
+  # Opt-in web-backed answers (config.toml [web].enabled). Local metasearch —
+  # the query never leaves the machine. JSON output is enabled in
+  # scripts/searxng/settings.yml. Safe to leave running; IO ignores it unless
+  # [web].enabled = true.
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "8888:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888/
+    volumes:
+      - ./scripts/searxng:/etc/searxng:ro
+    restart: unless-stopped
+
 volumes:
   io_pgdata:

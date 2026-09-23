@@ -5,10 +5,12 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.config import FilesConfig, ResolverConfig
 from io_assistant.db import models as m
 from io_assistant.extract.extractor import Extractor
 from io_assistant.files.paths import AccessGate
+from io_assistant.files.tags import salient_terms, write_tags
 from io_assistant.files.walk import classify_media
 from io_assistant.models_domain import EntityRef, ExtractionResult
 from io_assistant.resolve.resolver import EntityResolver
@@ -51,7 +53,8 @@ def apply_caption(session, path: Path, text: str, source: str, *,
                   gate: AccessGate, index, backend, embedder,
                   resolver_cfg: ResolverConfig, now,
                   confirmed: bool = False,
-                  extraction: ExtractionResult | None = None) -> CaptionResult:
+                  extraction: ExtractionResult | None = None,
+                  owner_name: str = "") -> CaptionResult:
     gate.assert_allowed(path, registered_keys=index.authorized_keys(session))
     pk = gate.key(path)
     node = index.get(session, pk)
@@ -104,15 +107,32 @@ def apply_caption(session, path: Path, text: str, source: str, *,
             oid = existing.id
         else:
             obj = m.Occasion(name=occ.name)
-            obj.embedding = embedder.embed_one(occ.name)
+            obj.embedding = embed_or_none(embedder, occ.name)
             session.add(obj)
             session.flush()
             oid = obj.id
         index.link_entity(session, node.id, "occasion", oid, source="caption")
         linked.append(("occasion", oid))
 
-    node.embedding = embedder.embed_one(text)
+    node.embedding = embed_or_none(embedder, text)
     session.flush()
+
+    # tokenised tags — the fast fuzzy layer. Attach entity ids where they
+    # resolved so a tag can also be a link.
+    by_norm: dict[str, tuple[str, int]] = {}
+    for etype, eid in linked:
+        nm = session.execute(
+            select(_ENTITY_NAME[etype]).where(_ENTITY_MODEL[etype].id == eid)
+        ).scalar_one_or_none()
+        if nm:
+            by_norm[nm.strip().lower()] = (etype, eid)
+    specs = []
+    for s in salient_terms(extraction, text, owner_name):
+        hit = by_norm.get(s.norm)
+        specs.append(s if hit is None else
+                     type(s)(term=s.term, norm=s.norm, kind=s.kind,
+                             entity_etype=hit[0], entity_id=hit[1]))
+    write_tags(session, node.id, node.media_kind, specs, source="caption")
 
     refs: list[EntityRef] = []
     for etype, eid in linked:

@@ -1,23 +1,29 @@
 <#
   dev.ps1 - single on/off switch for the whole IO stack.
 
-    .\dev.ps1 up          start Postgres + Ollama check + migrate + io service
-    .\dev.ps1 up -Window  ... and also open the desktop window
-    .\dev.ps1 down        stop the io service and Postgres
-    .\dev.ps1 down -Wipe  ... and delete the database volume
+    .\dev.ps1 up            start the stack AND open the desktop window
+                            (close the window to shut the stack down)
+    .\dev.ps1 up -NoWindow  start the stack headless (tests / background use)
+    .\dev.ps1 serve         alias for `up -NoWindow`
+    .\dev.ps1 down          stop the io service and Postgres
+    .\dev.ps1 down -Wipe    ... and delete the database volume
     .\dev.ps1 restart
     .\dev.ps1 status
-    .\dev.ps1 logs        tail the service log
-    .\dev.ps1 app         open the desktop window (service must be up)
-    .\dev.ps1 listen      voice mode (service must be up)
-    .\dev.ps1 doctor      io doctor
-    .\dev.ps1 test [...]  run the test suite against io_test
-    .\dev.ps1 install     put an "IO" shortcut on the Desktop (double-click =
-                          whole stack up + window; close window = stack down)
+    .\dev.ps1 logs          tail the service log
+    .\dev.ps1 app           open the desktop window (service must be up)
+    .\dev.ps1 listen        voice mode (service must be up)
+    .\dev.ps1 doctor        io doctor
+    .\dev.ps1 test [...]    run the test suite against io_test
+    .\dev.ps1 install       put an "IO" shortcut on the Desktop (double-click =
+                            whole stack up + window; close window = stack down)
+
+  IO is a desktop app - it never opens in a browser. A second launch just
+  brings the running window to the front.
 #>
 param(
   [Parameter(Position = 0)][string]$Command = "help",
-  [switch]$Window,
+  [switch]$Window,      # kept for compatibility; the window is now the default
+  [switch]$NoWindow,
   [switch]$Wipe,
   [Parameter(ValueFromRemainingArguments = $true)]$Rest
 )
@@ -85,10 +91,51 @@ function Ensure-Ollama {
   else { Warn "Ollama still down - embeddings will fail until it is running" }
 }
 
+function Test-WebEnabled {
+  # crude TOML peek: is there an uncommented `enabled = true` inside [web]?
+  $cfg = Join-Path $Root "config.toml"
+  if (-not (Test-Path $cfg)) { return $false }
+  $inWeb = $false
+  foreach ($line in Get-Content $cfg) {
+    $t = $line.Trim()
+    if ($t -match '^\[web\]') { $inWeb = $true; continue }
+    if ($t -match '^\[') { $inWeb = $false; continue }
+    if ($inWeb -and $t -match '^enabled\s*=\s*true') { return $true }
+  }
+  return $false
+}
+
+function Get-BackendSetting($key, $default) {
+  # crude TOML peek: uncommented `key = "value"` inside [backend]
+  $cfg = Join-Path $Root "config.toml"
+  if (-not (Test-Path $cfg)) { return $default }
+  $inB = $false
+  foreach ($line in Get-Content $cfg) {
+    $t = $line.Trim()
+    if ($t -match '^\[backend\]') { $inB = $true; continue }
+    if ($t -match '^\[') { $inB = $false; continue }
+    if ($inB -and $t -match ('^' + $key + '\s*=\s*"([^"]*)"')) { return $Matches[1] }
+  }
+  return $default
+}
+
+function Test-NeedsOllama {
+  # Ollama is only needed for the local/hybrid chat model or as the embedder
+  $provider = Get-BackendSetting "provider" "local"
+  $embedder = Get-BackendSetting "embedder" "auto"
+  if ($provider -ne "anthropic") { return $true }
+  return ($embedder -eq "ollama")
+}
+
 function Ensure-Postgres {
-  Info "PostgreSQL (docker compose up -d)"
-  docker compose up -d
+  Info "PostgreSQL (docker compose up -d db)"
+  docker compose up -d db
   if ($LASTEXITCODE -ne 0) { throw "docker compose failed - is Docker Desktop running?" }
+  if (Test-WebEnabled) {
+    Info "web answers enabled - starting SearXNG (docker compose up -d searxng)"
+    docker compose up -d searxng
+    if ($LASTEXITCODE -ne 0) { Warn "SearXNG did not start - web answers will fall back to nothing" }
+  }
 
   Info "waiting for PostgreSQL"
   $ready = $false
@@ -107,7 +154,8 @@ function Ensure-Postgres {
 function Do-Up {
   New-Item -ItemType Directory -Force $StateDir | Out-Null
   Ensure-Postgres
-  Ensure-Ollama
+  if (Test-NeedsOllama) { Ensure-Ollama }
+  else { Ok "Ollama not needed (provider=anthropic, built-in embedder)" }
 
   Info "alembic upgrade head"
   $mig = & uv run alembic upgrade head 2>&1
@@ -140,17 +188,18 @@ function Do-Up {
   }
 
   Write-Host ""
-  Ok "IO is up.  UI: http://localhost:$Port/app/"
-  if ($Window) {
-    Info "opening desktop window - close it to shut the whole stack down"
-    uv run io run
-    Write-Host ""
-    Do-Down
-  } else {
+  if ($NoWindow) {
+    Ok "IO service is up (headless)."
     Write-Host "     .\dev.ps1 app      open the desktop window"
     Write-Host "     .\dev.ps1 listen   voice mode"
     Write-Host "     .\dev.ps1 logs     tail the service log"
     Write-Host "     .\dev.ps1 down     stop everything"
+  } else {
+    Ok "IO is up - opening the desktop window."
+    Info "close the window to shut the whole stack down"
+    uv run io run
+    Write-Host ""
+    Do-Down
   }
 }
 
@@ -179,6 +228,10 @@ function Do-Status {
   }
   if (Test-Http "http://127.0.0.1:11434/api/version") { $ollama = "up" } else { $ollama = "down" }
   Write-Host "Ollama     : $ollama"
+  if (Test-WebEnabled) {
+    if (Test-Http "http://localhost:8888/") { $sx = "up" } else { $sx = "down" }
+    Write-Host "SearXNG    : $sx"
+  }
   Write-Host "PostgreSQL :"
   docker compose ps
 }
@@ -209,14 +262,15 @@ function Do-Install {
   $s.Description = "IO - local-first assistant"
   $s.Save()
   Ok "shortcut created: $lnk  ->  $exe"
-  Write-Host "     Double-click it to launch. A second launch just opens the"
-  Write-Host "     running window in your browser (single-instance)."
+  Write-Host "     Double-click it to launch. A second launch just brings the"
+  Write-Host "     running IO window to the front (single-instance, no browser)."
 }
 
 function Show-Help {
   Write-Host "dev.ps1 - IO stack on/off switch"
   Write-Host ""
-  Write-Host "  .\dev.ps1 up [-Window]     start Postgres, Ollama check, migrate, io service"
+  Write-Host "  .\dev.ps1 up [-NoWindow]   start the stack; open the desktop window unless -NoWindow"
+  Write-Host "  .\dev.ps1 serve           start the stack headless (= up -NoWindow)"
   Write-Host "  .\dev.ps1 down [-Wipe]     stop the service and Postgres (-Wipe drops the DB volume)"
   Write-Host "  .\dev.ps1 restart"
   Write-Host "  .\dev.ps1 status"
@@ -231,6 +285,7 @@ function Show-Help {
 
 switch ($Command.ToLower()) {
   "up"      { Do-Up }
+  "serve"   { $NoWindow = $true; Do-Up }
   "down"    { Do-Down }
   "restart" { Do-Down; Write-Host ""; Do-Up }
   "status"  { Do-Status }
@@ -239,7 +294,7 @@ switch ($Command.ToLower()) {
     else { Warn "no log yet - run .\dev.ps1 up" }
   }
   "app" {
-    if (Test-Listen $Port) { Start-Process "http://localhost:$Port/app/" }
+    if (Test-Listen $Port) { uv run io run }
     else { Warn "service is down - run .\dev.ps1 up first" }
   }
   "listen"  { uv run io listen @Rest }

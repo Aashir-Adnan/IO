@@ -14,6 +14,13 @@ from io_assistant.files.paths import AccessGate
 from io_assistant.db import models as m
 
 
+@pytest.fixture(autouse=True)
+def _no_real_embedder(monkeypatch, stub_embedder):
+    # hermetic: never reach Ollama or load the built-in model
+    import io_assistant.orchestrator as orch
+    monkeypatch.setattr(orch, "Embedder", lambda cfg: stub_embedder)
+
+
 @pytest.fixture
 def files_config(config, tmp_path):
     config.files = FilesConfig(enabled=True, allowlist_roots=[str(tmp_path)])
@@ -75,3 +82,28 @@ def test_open_folder_returns_gallery_card(db, files_config, fake_backend, tmp_pa
     assert res.intent_kind == "gallery"
     assert res.cards and res.cards[0].type == "gallery"
     assert res.cards[0].count == 1
+
+
+@requires_db
+def test_fetch_pictures_of_people_returns_tagged_gallery(db, files_config, fake_backend, tmp_path):
+    files_config.ui.name = "Aashir"
+    # two tagged media nodes: one of me+nafay, one of just nafay
+    for name, tags in (
+        ("both.jpg", [("Nafay", "person"), ("Me", "self"), ("Aashir", "self")]),
+        ("solo.jpg", [("Nafay", "person")]),
+        ("other.jpg", [("Priya", "person")]),
+    ):
+        n = m.FileNode(path=str(tmp_path / name), path_key=str(tmp_path / name).lower(),
+                       kind="file", media_kind="image", status="ok")
+        db.add(n); db.flush()
+        for term, kind in tags:
+            db.add(m.FileTag(file_id=n.id, term=term, norm=term.lower(),
+                             kind=kind, media_kind="image", source="caption"))
+    db.flush()
+    fake_backend.set_intent("file")
+    orch = Orchestrator(files_config, session_factory=lambda: db, backend=fake_backend)
+    res = _handle(orch, db, "fetch all pictures of me and nafay")
+    assert res.intent_kind == "gallery"
+    card = res.cards[0]
+    assert card.type == "gallery" and card.count == 2      # both + solo, not other
+    assert card.items[0].path.endswith("both.jpg")         # covers both terms -> first

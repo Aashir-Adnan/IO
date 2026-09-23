@@ -5,17 +5,29 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.db import models as m
 from io_assistant.models_domain import (
     ExtractionResult,
     normalize_domain,
     normalize_kind,
 )
-from io_assistant.resolve.dates import ground, to_rrule
+from io_assistant.resolve.dates import (
+    ground,
+    is_someday_phrase,
+    start_of_day,
+    to_rrule,
+)
 
 __all__ = ["PersistError", "PersistResult", "persist_store"]
 
 _STATUS_KINDS = {"task", "chore"}
+
+
+def _is_someday(rec) -> bool:
+    """A bare task whose date phrasing says 'no rush' / 'someday' — keep it
+    dateless instead of defaulting it to due-today."""
+    return is_someday_phrase(rec.when_phrase) or is_someday_phrase(rec.due_phrase)
 
 
 class PersistError(Exception):
@@ -216,42 +228,71 @@ def _write(
             name=occ.name,
             date=dr.value.date() if dr.value is not None else None,
         )
-        obj.embedding = embedder.embed_one(occ.name)
+        obj.embedding = embed_or_none(embedder, occ.name)
         session.add(obj)
         session.flush()
         occasion_ids[occ.name.lower()] = obj.id
 
+    from io_assistant.collections.registry import (
+        checkable_kinds as _checkable_kinds,
+        upsert_collection,
+    )
+
     record_ids: list[int] = []
     for rec in extraction.records:
         kind = normalize_kind(rec.kind)
-        status = (
-            "open"
-            if kind in _STATUS_KINDS and rec.status is None
-            else rec.status
+        checkable = (
+            kind in _STATUS_KINDS
+            or kind in _checkable_kinds(session)
+            or (rec.collection is not None and rec.collection.checkable)
         )
+        status = "open" if checkable and rec.status is None else rec.status
         assigned_by_id = None
         if rec.assigned_by:
             assigned_by_id = _ensure("person", rec.assigned_by)
+
+        occurred = ground(rec.when_phrase, now).value
+        due = ground(rec.due_phrase, now).value
+        # A bare "I need to X" task/chore — no when, no due, no recurrence, not
+        # "someday" — defaults to due-today and rolls forward (read-time) until
+        # it is closed. events/gym_session/etc are never touched.
+        if (
+            kind in _STATUS_KINDS
+            and due is None
+            and occurred is None
+            and not rec.recurrence_phrase
+            and not _is_someday(rec)
+        ):
+            due = start_of_day(now)
 
         row = m.Record(
             kind=kind,
             domain=normalize_domain(rec.domain),
             title=rec.title,
             body=rec.body,
-            occurred_at=ground(rec.when_phrase, now).value,
-            due_at=ground(rec.due_phrase, now).value,
+            occurred_at=occurred,
+            due_at=due,
             recurrence_rule=to_rrule(rec.recurrence_phrase),
             status=status,
             assigned_by_person_id=assigned_by_id,
             attributes=rec.attributes,
             source_utterance_id=utterance_id,
         )
-        row.embedding = embedder.embed_one(
-            (rec.title + "\n" + (rec.body or "")).strip()
+        row.embedding = embed_or_none(
+            embedder, (rec.title + "\n" + (rec.body or "")).strip()
         )
         session.add(row)
         session.flush()
         record_ids.append(row.id)
+
+        if rec.collection is not None:
+            upsert_collection(
+                session,
+                kind_slug=kind,
+                proposal=rec.collection,
+                example_record_id=row.id,
+                now=now,
+            )
 
         for pname in rec.people:
             pid = _ensure("person", pname)

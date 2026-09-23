@@ -178,3 +178,54 @@ def test_load_config_prefers_user_config(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # no ./config.toml here
     cfg = load_config()
     assert cfg.embedding_dim == 768
+
+
+_BASE = """
+    database_url = "postgresql+psycopg://u:p@localhost/db"
+    embedding_dim = 768
+    [backend]
+    provider = "local"
+    profile = "light"
+    anthropic_model = "claude-haiku-4-5"
+    ollama_url = "http://localhost:11434"
+    ollama_keep_alive = "30s"
+    instruct_model = "llama3.2:3b"
+    embed_model = "nomic-embed-text"
+    num_thread = 0
+    [resolver]
+    fuzzy_threshold = 92
+    vector_similarity_threshold = 0.85
+    confidence_gate_threshold = 0.6
+"""
+
+
+def test_updates_defaults(tmp_path):
+    cfg = load_config(write_toml(tmp_path, _BASE))
+    assert cfg.updates.enabled is True
+    assert cfg.updates.branch == "" and cfg.updates.interval_h == 6.0
+
+
+def test_local_override_is_deep_merged(tmp_path):
+    p = write_toml(tmp_path, _BASE)
+    (tmp_path / "config.local.toml").write_text(textwrap.dedent("""
+        [backend]
+        provider = "anthropic"
+        [updates]
+        interval_h = 2
+    """))
+    cfg = load_config(p)
+    assert cfg.backend.provider == "anthropic"            # overridden
+    assert cfg.backend.embed_model == "nomic-embed-text"  # sibling key kept
+    assert cfg.resolver.fuzzy_threshold == 92             # other table untouched
+    assert cfg.updates.interval_h == 2
+
+
+def test_missing_local_override_is_fine(tmp_path):
+    assert load_config(write_toml(tmp_path, _BASE)).backend.provider == "local"
+
+
+def test_invalid_local_override_names_the_file(tmp_path):
+    p = write_toml(tmp_path, _BASE)
+    (tmp_path / "config.local.toml").write_text("this is = = not toml")
+    with pytest.raises(ConfigError, match="config.local.toml"):
+        load_config(p)

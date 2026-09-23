@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select, text as sqltext
 
+from io_assistant.backend.embed import embed_or_none
 from io_assistant.config import FilesConfig, ResolverConfig
 from io_assistant.db import models as m
 from io_assistant.files.index import FileIndexer
@@ -83,21 +84,33 @@ class FileSearcher:
         ).scalars():
             bump(fid, lexical=0.5, why="name/summary match")
 
-        # 1b semantic
-        qvec = self._embed.embed_one(question)
-        for fid, dist in session.execute(
-            select(m.FileChunk.file_id,
-                   m.FileChunk.embedding.cosine_distance(qvec).label("d"))
-            .order_by(sqltext("d ASC")).limit(30)
-        ).all():
-            bump(fid, similarity=1.0 - float(dist), why="similar content")
-        for fid, dist in session.execute(
-            select(m.FileNode.id,
-                   m.FileNode.embedding.cosine_distance(qvec).label("d"))
-            .where(m.FileNode.embedding.isnot(None))
-            .order_by(sqltext("d ASC")).limit(15)
-        ).all():
-            bump(fid, similarity=1.0 - float(dist), why="similar summary")
+        # 1b semantic (skipped when no embedder is available)
+        qvec = embed_or_none(self._embed, question)
+        if qvec is not None:
+            for fid, dist in session.execute(
+                select(m.FileChunk.file_id,
+                       m.FileChunk.embedding.cosine_distance(qvec).label("d"))
+                .order_by(sqltext("d ASC")).limit(30)
+            ).all():
+                bump(fid, similarity=1.0 - float(dist), why="similar content")
+            for fid, dist in session.execute(
+                select(m.FileNode.id,
+                       m.FileNode.embedding.cosine_distance(qvec).label("d"))
+                .where(m.FileNode.embedding.isnot(None))
+                .order_by(sqltext("d ASC")).limit(15)
+            ).all():
+                bump(fid, similarity=1.0 - float(dist), why="similar summary")
+
+        # 1c-tags: tokenised salient terms → file_tags (fuzzy, fast)
+        from io_assistant.files.tags import query_terms
+        for term in query_terms(question, ""):
+            for fid, hit_term in session.execute(
+                select(m.FileTag.file_id, m.FileTag.term)
+                .where((m.FileTag.norm == term)
+                       | (func.similarity(m.FileTag.norm, term) >= 0.45))
+                .limit(40)
+            ).all():
+                bump(fid, entity=0.9, why=f"tagged {hit_term}")
 
         # 1c entity
         names = [w.strip(".,!?") for w in question.split() if w[:1].isupper()]

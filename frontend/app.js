@@ -1,28 +1,38 @@
+import { syncMessage } from "./sync.js";
 import { createStore } from "./state.js";
 import { Api } from "./api.js";
 import { icon } from "./vendor/icons.js";
 import { mount as mountStandby } from "./views/standby.js";
 import { mount as mountListening } from "./views/listening.js";
 import { mount as mountConversation } from "./views/conversation.js";
-import { mount as mountGallery } from "./views/gallery.js";
-import { Drawer } from "./components/drawer.js";
+import { mount as mountLibrary } from "./views/library.js";
+import { mount as mountRecords } from "./views/records.js";
+import { mount as mountTasks } from "./views/tasks.js";
 import { Settings } from "./components/settings.js";
 
 const VIEWS = {
   standby: mountStandby,
   talk: mountListening,
   conversation: mountConversation,
-  gallery: mountGallery,
+  library: mountLibrary,
+  records: mountRecords,
+  tasks: mountTasks,
+  // legacy aliases — the library view covers both
+  gallery: mountLibrary,
+  files: mountLibrary,
 };
 
 const store = createStore({
   view: "standby",
   conversationId: null,
+  conversationTitle: null,
   transcript: [],
   busy: false,
   autoSpeak: "voice",
   voiceOk: false,
   voiceReason: null,
+  sttStreaming: false,
+  sttProvider: "whisper",
   connection: "connecting",
   typingCps: 45,
   minThinkMs: 600,
@@ -32,7 +42,6 @@ const store = createStore({
 const api = Api("");
 let ws;
 let currentAudio = null;
-let drawer;
 let settings;
 
 function speak(audioB64) {
@@ -54,27 +63,72 @@ const ctx = {
   speak, stopAudio,
   goto: (v) => store.set({ view: v }),
   openSettings: () => settings && settings.open(),
-  toggleHistory: () => drawer && drawer.toggle(),
+  setUpdate: (u) => paintUpdate(u),
+  setSync: (s) => paintSync(s),
 };
+
+// Memory-sync dot in the topbar; Settings → Account has the detail.
+function paintSync(s) {
+  store.set({ sync: s });
+  const dot = document.getElementById("sync-dot");
+  if (!dot) return;
+  const m = syncMessage(s);
+  dot.hidden = !s || !s.enabled;
+  dot.dataset.state = m.state;
+  dot.title = m.text;
+}
+async function checkSync() {
+  try { paintSync(await api.sync()); } catch { /* offline, or an older server */ }
+}
+
+// "Update available" pill in the topbar; Settings → Updates has the detail.
+function paintUpdate(u) {
+  store.set({ update: u });
+  const pill = document.getElementById("update-pill");
+  if (!pill) return;
+  const on = !!(u && u.enabled !== false && u.available);
+  pill.hidden = !on;
+  if (on) pill.textContent = `Update available · ${u.behind}`;
+}
+async function checkUpdate() {
+  try { paintUpdate(await api.update()); } catch { /* offline, or an older server */ }
+}
 
 function handleTurn(frame) {
   const gc = (frame.cards || []).find((c) => c.type === "gallery");
-  if (gc) { store.set({ view: "gallery", gallery: gc }); return; }
+  if (gc) { store.set({ view: "library", gallery: gc }); return; }
   ctx.onTurn && ctx.onTurn(frame);
 }
 ctx.handleTurn = handleTurn;
 
+let viewAnimTimer = null;
 function route() {
   const view = document.getElementById("view");
-  if (typeof view._cleanup === "function") {
-    try { view._cleanup(); } catch { /* ignore */ }
-  }
-  view._cleanup = null;
-  view.innerHTML = "";
-  stopAudio();
-  const name = store.get().view;
-  (VIEWS[name] || VIEWS.standby)(view, ctx);
-  document.getElementById("win").dataset.view = name;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const mount = () => {
+    if (typeof view._cleanup === "function") {
+      try { view._cleanup(); } catch { /* ignore */ }
+    }
+    view._cleanup = null;
+    view.classList.remove("leaving");
+    view.innerHTML = "";
+    const status = document.getElementById("status");
+    if (status) status.innerHTML = "";
+    stopAudio();
+    const name = store.get().view;
+    (VIEWS[name] || VIEWS.standby)(view, ctx);
+    document.getElementById("win").dataset.view = name;
+    if (!reduce) {
+      view.classList.add("entering");
+      clearTimeout(viewAnimTimer);
+      viewAnimTimer = setTimeout(() => view.classList.remove("entering"), 720);
+    }
+  };
+
+  if (reduce || !view.firstElementChild) { mount(); return; }
+  view.classList.add("leaving");
+  setTimeout(mount, 120);
 }
 
 let lastView = store.get().view;
@@ -82,29 +136,72 @@ store.subscribe((s) => {
   if (s.view !== lastView) { lastView = s.view; route(); }
 });
 
-// --- pywebview window controls -------------------------------------------
+// --- frameless pywebview window controls --------------------------------
 function wv() { return window.pywebview && window.pywebview.api; }
-document.getElementById("win-min").onclick = () => wv() && wv().minimize();
-document.getElementById("win-full").onclick = () => wv() && wv().toggle_fullscreen();
-document.getElementById("win-close").onclick = () => wv() ? wv().close() : window.close();
 
-document.getElementById("gear").innerHTML = icon("gear", { size: 18 });
+const winMin = document.getElementById("win-min");
+const winFull = document.getElementById("win-full");
+const winClose = document.getElementById("win-close");
+winMin.innerHTML = icon("minus", { size: 14 });
+winClose.innerHTML = icon("x", { size: 14 });
+
+function setFullscreen(on) {
+  document.documentElement.dataset.fullscreen = on ? "1" : "";
+  winFull.innerHTML = icon(on ? "cornersIn" : "cornersOut", { size: 13 });
+  winFull.title = on ? "Exit fullscreen" : "Fullscreen";
+}
+setFullscreen(false);
+
+winMin.onclick = () => wv() && wv().minimize();
+winClose.onclick = () => (wv() ? wv().close() : window.close());
+async function toggleFull() {
+  if (!wv()) return;
+  try { setFullscreen(await wv().toggle_fullscreen()); }
+  catch { /* older api: assume it flipped */ setFullscreen(document.documentElement.dataset.fullscreen !== "1"); }
+}
+winFull.onclick = toggleFull;
+
+document.getElementById("gear").innerHTML = icon("gear", { size: 16 });
 document.getElementById("gear").onclick = () => settings.toggle();
-document.getElementById("win-min").innerHTML = icon("minus", { size: 14 });
-document.getElementById("win-full").innerHTML = icon("cornersOut", { size: 13 });
-document.getElementById("win-close").innerHTML = icon("x", { size: 14 });
+document.getElementById("memory").innerHTML = icon("brain", { size: 16 });
+document.getElementById("memory").onclick = () =>
+  store.set({ view: store.get().view === "records" ? "standby" : "records" });
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     stopAudio();
     if (!document.getElementById("settings").hidden) { settings.close(); return; }
     if (store.get().view !== "standby") store.set({ view: "standby" });
+    return;
+  }
+  // Alt+Enter — toggle fullscreen (Alt+Space stays reserved for voice)
+  if (e.altKey && (e.key === "Enter" || e.code === "NumpadEnter")) {
+    e.preventDefault();
+    toggleFull();
   }
 });
 
+async function applyWindowEffects() {
+  try {
+    const eff = wv() && wv().effects ? await wv().effects() : null;
+    document.documentElement.dataset.acrylic = eff && eff.acrylic ? "1" : "0";
+  } catch { document.documentElement.dataset.acrylic = "0"; }
+  try {
+    if (wv() && wv().is_fullscreen) setFullscreen(await wv().is_fullscreen());
+  } catch { /* keep current */ }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ctx = ctx;
-  drawer = Drawer(document.getElementById("drawer"), ctx);
+  // the small always-on-top tasks window: just the task list, no shell
+  if (location.hash === "#tasks") {
+    document.documentElement.dataset.mode = "tasks";
+    store.set({ view: "tasks" });
+    route();
+    return;
+  }
+  applyWindowEffects();
+  setTimeout(applyWindowEffects, 800);   // the backdrop is applied on 'shown'
   settings = Settings(
     document.getElementById("settings"),
     document.getElementById("settings-scrim"),
@@ -113,6 +210,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   ws = api.connectWs((frame) => {
     if (frame.type === "_open") store.set({ connection: "connected" });
     else if (frame.type === "_close") store.set({ connection: "disconnected" });
+    else if (frame.type === "progress") ctx.onProgress && ctx.onProgress(frame);
     else if (frame.type === "answer") handleTurn(frame);
   });
   try {
@@ -121,8 +219,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     store.set({ voiceOk: !!vh.whisper, voiceReason: vh.reason || null });
   } catch { /* keep voiceOk false */ }
   try {
+    const stt = await api.sttMode();
+    // real-time streaming still needs a working mic; voiceOk from whisper is
+    // the batch fallback, so treat either as "voice usable"
+    store.set({
+      sttStreaming: !!stt.streaming,
+      sttProvider: stt.provider || "whisper",
+      voiceOk: store.get().voiceOk || !!stt.streaming,
+    });
+  } catch { /* keep defaults */ }
+  try {
     const convs = await api.conversations();
-    if (convs[0]) store.set({ conversationId: convs[0].id });
+    if (convs[0]) store.set({ conversationId: convs[0].id, conversationTitle: convs[0].title || null });
   } catch { /* fresh */ }
   route();
+  document.getElementById("update-pill").onclick = () => settings.open();
+  checkSync();
+  setInterval(checkSync, 30 * 1000);
+  setTimeout(checkUpdate, 20000);           // after the service's first fetch
+  setInterval(checkUpdate, 10 * 60 * 1000);
 });

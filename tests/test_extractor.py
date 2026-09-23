@@ -15,7 +15,7 @@ class FlakyBackend:
     def route(self, u):
         return "store"
 
-    def extract(self, u, now):
+    def extract(self, u, now, *, context=None):
         r = self._results[self.calls]
         self.calls += 1
         if isinstance(r, Exception):
@@ -49,6 +49,24 @@ def test_returns_none_after_two_failures():
     b = FlakyBackend([BackendParseError("x"), BackendParseError("y")])
     out = Extractor(b).run("hi", dt.datetime.now(dt.timezone.utc))
     assert out is None and b.calls == 2
+
+
+def test_run_passes_context_through_to_backend_extract():
+    """Finding 2: the 'known lists' vocabulary must reach Backend.extract the
+    same way it already reaches route/plan/phrase."""
+    class SpyBackend(FlakyBackend):
+        def __init__(self, results):
+            super().__init__(results)
+            self.last_context = None
+
+        def extract(self, u, now, *, context=None):
+            self.last_context = context
+            return super().extract(u, now)
+
+    b = SpyBackend([ExtractionResult(records=[])])
+    Extractor(b).run("add Oppenheimer to my watchlist", dt.datetime.now(dt.timezone.utc),
+                     context="Known lists (reuse the exact slug):\n- watchlist")
+    assert b.last_context == "Known lists (reuse the exact slug):\n- watchlist"
 
 
 @pytest.mark.ollama

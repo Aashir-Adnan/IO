@@ -18,6 +18,12 @@ bucket from a small open set: `social` `job` `home` `health` `finance`
 `learning` `errand` `other`), `title text`, `body text null`,
 `occurred_at timestamptz null`, `due_at timestamptz null`, `status text null`
 (`open` | `done` | `dropped`, or null for pure events/notes),
+`completed_at timestamptz null` (migration 0008 — stamped when `status` flips to
+`done`, cleared on `open`; maintained only through
+`io_assistant/tasks/complete.py::set_record_status`, which is the single
+write-path — the chat close flow and `PATCH /record/{id}` both call it. `PATCH
+/record` with `status: ""` (or any falsy value) is treated as re-open for
+task-kinds, i.e. `open` + `completed_at` cleared),
 `recurrence_rule text null` (iCal RRULE), `assigned_by_person_id fk null`,
 `attributes jsonb` (any other structured detail), `source_utterance_id fk`,
 `embedding vector`, `created_at`, `updated_at`.
@@ -27,6 +33,22 @@ values, NEVER a new table.**
 **Link tables** — `record_people`, `record_places`, `record_items`,
 `record_occasions`, `occasion_people`. Each is `(record_id|occasion_id,
 entity_id, role text null)`.
+
+**`collections` (migration 0009)** — a learned descriptor for an ad-hoc
+personal list (movies to watch, books to read, gift ideas), one row per
+distinct `records.kind` the model has flagged as a list. Columns: `id`,
+`name text` (display name), `kind_slug text unique` (the `records.kind` these
+items share), `item_noun text null` ("movie or show", "book"),
+`synonyms jsonb` (lowercased, deduped phrasings the user might say),
+`field_hint jsonb` (`{"checkable": bool}` today — whether items have an
+open/done state; the `fields` list from the spec is advisory-only, not typed),
+`example_record_id fk -> records.id null on delete set null`, `created_at`,
+`updated_at`. Owned entirely by `io_assistant/collections/registry.py`
+(`upsert_collection`/`describe_collections`/`resolve_collection`/
+`checkable_kinds`/`seen_kinds`/`routing_preamble`) — the extraction model only
+*proposes* one via `ExtractedRecord.collection: ExtractedCollection | None`;
+Python decides identity (dedup by `kind_slug`, union synonyms). See
+`.claude/knowledge/tasks-and-collections.md`.
 
 **Indexing** — HNSW index on every `embedding` column (people, places, items,
 occasions, records); b-tree on every foreign key and every timestamp

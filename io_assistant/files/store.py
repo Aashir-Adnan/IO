@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 
 from io_assistant.config import FilesConfig
 from io_assistant.db import models as m
-from io_assistant.files.paths import AccessGate
+from io_assistant.files.paths import AccessDenied, AccessGate
 from io_assistant.files.walk import walk_dir
 
 __all__ = ["FileIndex", "RegisterResult"]
@@ -116,8 +116,17 @@ class FileIndex:
 
     def register(self, session, path: Path, gate: AccessGate,
                  config: FilesConfig) -> RegisterResult:
-        keys = self.authorized_keys(session)
-        gate.assert_allowed(path, registered_keys=keys)
+        # Registering a folder IS the authorization — the user picked this exact
+        # path. The allowlist_roots only gate *implicit* access (phrase-resolved
+        # "open the folder called X", raw file serving). We still refuse a path
+        # that resolves nowhere, sits behind a symlink escape, or is itself an
+        # excluded junk dir (.git, node_modules, …).
+        if not path.exists():
+            raise AccessDenied(str(path), "path does not resolve")
+        if gate.is_excluded(path):
+            raise AccessDenied(str(path), "matches an exclude pattern")
+        if gate._is_symlink_escape(path):
+            raise AccessDenied(str(path), "symlink (follow_symlinks is off)")
         is_dir = path.is_dir()
         root = self.upsert_node(
             session, path=str(path), path_key=gate.key(path),

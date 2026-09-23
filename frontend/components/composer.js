@@ -6,12 +6,18 @@ export function Composer(root, { onSend, onMic, compact = false, placeholder } =
   el.innerHTML = `
     ${compact ? "" : '<span class="composer-lbl mono">INPUT</span>'}
     <button class="composer-mic" type="button" aria-label="Voice">${icon("mic", { size: 16 })}</button>
-    <textarea rows="1" placeholder="${placeholder || "Ask IO, or hold ⌥ Space to talk"}"></textarea>
+    <textarea rows="1" placeholder="${placeholder || "Ask IO anything"}"></textarea>
     ${compact ? `<button class="composer-send" type="button" aria-label="Send">${icon("arrowUp", { size: 16 })}</button>` : ""}
+    <div class="composer-status" hidden>
+      <span class="composer-status-spin"></span>
+      <span class="composer-status-txt"></span>
+    </div>
   `;
   root.appendChild(el);
 
   const ta = el.querySelector("textarea");
+  const statusEl = el.querySelector(".composer-status");
+  const statusTxt = el.querySelector(".composer-status-txt");
   const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; };
   ta.addEventListener("input", grow);
   grow();
@@ -29,8 +35,18 @@ export function Composer(root, { onSend, onMic, compact = false, placeholder } =
   const sendBtn = el.querySelector(".composer-send");
   if (sendBtn) sendBtn.addEventListener("click", send);
 
+  const setStatus = (text) => {
+    if (!text) { statusEl.hidden = true; statusTxt.textContent = ""; return; }
+    statusTxt.textContent = text;
+    statusEl.hidden = false;
+  };
+
   return {
-    setBusy: (b) => { ta.disabled = b; el.classList.toggle("busy", b); },
+    setBusy: (b) => {
+      el.classList.toggle("busy", b);
+      if (!b) setStatus("");
+    },
+    setStatus,
     focus: () => ta.focus(),
     clear: () => { ta.value = ""; grow(); },
   };

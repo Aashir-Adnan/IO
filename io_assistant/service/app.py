@@ -1,20 +1,26 @@
 from __future__ import annotations
 
 import base64
+import os
 import secrets
+import sys
+import threading
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from sqlalchemy import text
+import httpx
+
+from fastapi import FastAPI, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import func, select, text
 from fastapi.staticfiles import StaticFiles
 
 from io_assistant.config import Config
 from io_assistant.conversation.context import format_context
 from io_assistant.conversation.store import ConversationStore
+from io_assistant.db import models as m
 from io_assistant.db.base import make_engine, make_session_factory
-from io_assistant.orchestrator import Orchestrator, PendingStore
+from io_assistant.orchestrator import Orchestrator, PendingComplete, PendingStore
 from io_assistant.service.schemas import (
     CaptionConfirmIn,
     CaptionIn,
@@ -32,13 +38,17 @@ from io_assistant.service.schemas import (
     FilesListOut,
     HealthOut,
     NewConversationOut,
+    RecordEditIn,
     TurnResponse,
     UtteranceIn,
     VoiceHealthOut,
     VoiceOut,
 )
-from io_assistant.service.panels import entity_panel, standby_panel
+from io_assistant.service.panels import (
+    entity_panel, record_brief, records_list, standby_panel,
+)
 from io_assistant.service.voice import VoiceModels, VoiceUnavailable
+from io_assistant.widgets.store import WidgetsDoc
 
 __all__ = ["create_app"]
 
@@ -53,6 +63,18 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="io", version="0.1.0")
 
+    token = config.service.remote_token
+
+    @app.middleware("http")
+    async def _remote_auth(request, call_next):
+        # "" (default): no check at all, unchanged from before this existed.
+        # Set: every route but /health needs `Authorization: Bearer <token>` —
+        # applied once here so a new endpoint can't be added later and forget it.
+        if token and request.url.path != "/health":
+            if request.headers.get("authorization") != f"Bearer {token}":
+                return JSONResponse({"detail": "unauthorized"}, status_code=401)
+        return await call_next(request)
+
     eng = engine if engine is not None else make_engine(config.database_url)
     factory = make_session_factory(eng)
     if orchestrator is None:
@@ -64,10 +86,10 @@ def create_app(
     app.state.orchestrator = orchestrator
     app.state.conversations = store
     app.state.voice = voice or VoiceModels(config)
-    app.state.pending: dict[str, PendingStore] = {}
+    app.state.pending: dict[str, PendingStore | PendingComplete] = {}
     app.state.recall_ms = 0
 
-    def _run(body: UtteranceIn) -> TurnResponse:
+    def _run(body: UtteranceIn, on_progress=None) -> TurnResponse:
         import time
 
         pending = None
@@ -75,16 +97,21 @@ def create_app(
             pending = app.state.pending.pop(body.confirm_token, None)
 
         conv_id = body.conversation_id or store.ensure_active()
-        text_in = pending.text if pending is not None else body.text
+        # A gated store replays its own text; a gated completion needs the
+        # reply the user just typed ("the first one").
+        text_arg = body.text or getattr(pending, "text", "")
+        text_in = getattr(pending, "text", None) or body.text
         store.append(conv_id, "user", text_in, source=body.source)
         history = format_context(store.recent_turns(conv_id))
 
         t0 = time.perf_counter()
         if pending is not None:
-            result = orchestrator.handle(pending.text, pending=pending, history=history)
+            result = orchestrator.handle(text_arg, pending=pending,
+                                         history=history, on_progress=on_progress)
         else:
             result = orchestrator.handle(
-                body.text, source=body.source, history=history
+                body.text, source=body.source, history=history,
+                on_progress=on_progress,
             )
         if result.intent == "query":
             ms = int((time.perf_counter() - t0) * 1000)
@@ -95,6 +122,9 @@ def create_app(
             conv_id, "assistant", result.message,
             kind=result.intent_kind, intent=result.intent, source=body.source,
         )
+        poke = getattr(getattr(app.state, "sync", None), "poke", None)
+        if poke is not None:                      # sync soon after a write
+            poke()
 
         token = None
         if result.pending is not None:
@@ -174,6 +204,48 @@ def create_app(
             transcript_confidence=tr.confidence,
         )
 
+    @app.post("/voice/transcribe")
+    def voice_transcribe(audio: UploadFile):
+        """Speech-to-text only — no turn. Used by the ask bar mic and the
+        media caption box. Always available when Whisper is (independent of
+        the files feature)."""
+        try:
+            transcriber = app.state.voice.transcriber()
+        except VoiceUnavailable as e:
+            raise HTTPException(status_code=503, detail=e.reason)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(audio.file.read())
+            tmp_name = tmp.name
+        tr = transcriber.transcribe(tmp_name)
+        if not tr.text.strip():
+            raise HTTPException(status_code=422, detail="no speech")
+        return {"transcript": tr.text, "confidence": tr.confidence}
+
+    @app.get("/voice/stt")
+    def voice_stt_mode():
+        """Which STT the client should use: 'whisper-stream' (local real-time),
+        'soniox' (cloud real-time), or 'whisper' (local batch)."""
+        streaming = config.voice.stt_streaming
+        if config.voice.stt_provider == "whisper-stream":
+            provider = "whisper-stream"
+        elif streaming:
+            provider = "soniox"
+        else:
+            provider = "whisper"
+        return {"provider": provider, "streaming": streaming}
+
+    @app.post("/voice/stream-token")
+    def voice_stream_token():
+        """Mint a short-lived Soniox token so the browser can stream mic audio
+        to Soniox directly — the real SONIOX_API_KEY never leaves the server."""
+        from io_assistant.transcribe.soniox import SonioxUnavailable, mint_temp_key
+        try:
+            return mint_temp_key(config)
+        except SonioxUnavailable as e:
+            raise HTTPException(status_code=503, detail=e.reason)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Soniox token request failed: {e}")
+
     @app.get("/conversations", response_model=list[ConversationSummary])
     def conversations_list():
         return store.list_conversations()
@@ -200,10 +272,292 @@ def create_app(
             raise HTTPException(status_code=404, detail="entity not found")
         return panel
 
+    @app.delete("/entity/{etype}/{entity_id}")
+    def entity_delete(etype: str, entity_id: int):
+        model = {"person": m.Person, "place": m.Place,
+                 "item": m.Item, "occasion": m.Occasion}.get(etype)
+        if model is None:
+            raise HTTPException(status_code=400, detail="unknown entity type")
+        with factory() as s:
+            row = s.get(model, entity_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="entity not found")
+            s.delete(row)      # link tables cascade
+            s.commit()
+        return {"deleted": {"etype": etype, "id": entity_id}}
+
+    # --- records: browse / edit / delete (the user cleaning up bad data) ---
+    @app.get("/records")
+    def records_get(limit: int = 200, kind: str | None = None, domain: str | None = None):
+        with factory() as s:
+            return records_list(s, limit=limit, kind=kind, domain=domain)
+
+    @app.get("/collections")
+    def collections_list():
+        with factory() as s:
+            out = []
+            for c in s.execute(select(m.Collection).order_by(m.Collection.created_at)).scalars():
+                base = select(func.count()).select_from(m.Record).where(m.Record.kind == c.kind_slug)
+                out.append({
+                    "kind_slug": c.kind_slug, "name": c.name, "item_noun": c.item_noun,
+                    "open_count": s.execute(base.where(m.Record.status == "open")).scalar_one(),
+                    "done_count": s.execute(base.where(m.Record.status == "done")).scalar_one(),
+                })
+            return out
+
+    @app.patch("/record/{record_id}")
+    def record_edit(record_id: int, body: RecordEditIn):
+        with factory() as s:
+            row = s.get(m.Record, record_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="record not found")
+            if body.title is not None and body.title.strip():
+                if body.title.strip() != row.title:
+                    row.title = body.title.strip()
+                    try:
+                        row.embedding = orchestrator._embedder.embed_one(row.title)
+                    except Exception:  # noqa: BLE001
+                        pass
+            if body.kind is not None:
+                row.kind = body.kind.strip() or row.kind
+            if body.domain is not None:
+                row.domain = body.domain.strip() or None
+            if body.status is not None:
+                # A cleared status ("") means "open" for task-kinds; `set_record_status`
+                # is the one place completed_at is maintained (see tasks/complete.py).
+                import datetime as _dt
+
+                from io_assistant.tasks.complete import set_record_status
+                set_record_status(s, row, body.status or "open",
+                                  _dt.datetime.now(_dt.timezone.utc))
+            if body.when_phrase is not None:
+                import datetime as _dt
+                from io_assistant.resolve.dates import ground
+                res = ground(body.when_phrase or None, _dt.datetime.now(_dt.timezone.utc))
+                if body.when_phrase.strip() == "":
+                    row.occurred_at = row.due_at = None
+                elif res.ok and res.value is not None:
+                    if row.due_at and not row.occurred_at:
+                        row.due_at = res.value
+                    else:
+                        row.occurred_at = res.value
+                else:
+                    raise HTTPException(status_code=422, detail=f"couldn't read the date '{body.when_phrase}'")
+            s.flush()
+            s.commit()
+            return record_brief(s, s.get(m.Record, record_id))
+
+    @app.delete("/record/{record_id}")
+    def record_delete(record_id: int):
+        with factory() as s:
+            row = s.get(m.Record, record_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="record not found")
+            s.delete(row)     # record_* link tables cascade
+            s.commit()
+        return {"deleted": record_id}
+
     @app.get("/standby")
     def standby():
         with factory() as s:
             return standby_panel(s, config, app.state.recall_ms)
+
+    @app.post("/window/raise")
+    def window_raise():
+        """A second app launch calls this so the running instance surfaces its
+        window (IO is desktop-only — no browser fallback). 404 when this
+        process has no window (headless `io serve`)."""
+        from io_assistant.service import runner
+
+        if runner.raise_window():
+            return {"raised": True}
+        raise HTTPException(status_code=404, detail="no desktop window in this process")
+
+    @app.get("/web")
+    def web_smoke(q: str, kind: str = "fact"):
+        """Smoke/debug endpoint for the web-answers path. 404 when [web] is off."""
+        if not config.web.enabled:
+            raise HTTPException(status_code=404, detail="web answers are disabled")
+        if kind not in ("news", "fact"):
+            raise HTTPException(status_code=400, detail="kind must be 'news' or 'fact'")
+        import datetime as _dt
+
+        from io_assistant.web.answer import WebAnswerer
+
+        answerer = getattr(app.state, "web_answerer", None)
+        if answerer is None:
+            answerer = WebAnswerer(config, orchestrator._backend)
+            app.state.web_answerer = answerer
+        with factory() as s:
+            ans = answerer.answer(s, q, kind=kind, now=_dt.datetime.now(_dt.timezone.utc))
+            s.commit()
+        if ans is None:
+            raise HTTPException(status_code=502, detail="no web answer available")
+        return {"text": ans.text, "kind": ans.kind, "tier": ans.tier,
+                "sources": ans.sources, "cached": ans.cached}
+
+    app.state.tracker_poller = None
+    if config.web.enabled:
+        from io_assistant.web.poller import TrackerPoller
+
+        tp = TrackerPoller(factory, config)
+        tp.start()
+        app.state.tracker_poller = tp
+
+        @app.on_event("shutdown")
+        def _stop_poller():
+            tp.stop()
+
+    from io_assistant.backend.backfill import EmbeddingBackfiller
+
+    app.state.backfiller = None
+    embedder = getattr(orchestrator, "_embedder", None)
+    # only when create_app owns its engine (production); tests inject theirs and
+    # share one connection, which a background thread must not touch
+    if engine is None and embedder is not None:
+        backfiller = EmbeddingBackfiller(factory, embedder)
+        backfiller.start()
+        app.state.backfiller = backfiller
+
+        @app.on_event("shutdown")
+        def _stop_backfiller():
+            backfiller.stop()
+
+    from io_assistant.updates.apply import UpdateChecker, spawn_update
+
+    updater = UpdateChecker(config)
+    app.state.updater = updater
+    app.state.spawn_update = spawn_update
+    app.state.exit_fn = lambda: threading.Timer(1.0, os._exit, [0]).start()
+    # background git fetch only in production (create_app owns its engine)
+    if engine is None and config.updates.enabled:
+        updater.start()
+
+        @app.on_event("shutdown")
+        def _stop_updater():
+            updater.stop()
+
+    from io_assistant.widgets import store as widget_store
+
+    app.state.widgets_path = widget_store.default_path()
+
+    @app.get("/widgets")
+    def widgets_get():
+        return widget_store.load(app.state.widgets_path) or {"layout": None, "settings": {}}
+
+    @app.put("/widgets")
+    def widgets_put(doc: WidgetsDoc):
+        widget_store.save(app.state.widgets_path, doc)
+        return {"ok": True}
+
+    from io_assistant.widgets.weather import WeatherClient
+
+    app.state.weather = WeatherClient()
+
+    def _weather_call(fn, *args):
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001 — network, bad payload
+            raise HTTPException(status_code=502,
+                                detail=f"Couldn't reach the weather service ({type(e).__name__}).")
+
+    @app.get("/weather/search")
+    def weather_search(q: str = ""):
+        return _weather_call(app.state.weather.search, q)
+
+    @app.get("/weather")
+    def weather_forecast(lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180)):
+        return _weather_call(app.state.weather.forecast, lat, lon)
+
+    from io_assistant.widgets.gmail import GmailConnector
+
+    app.state.gmail = GmailConnector(config)
+
+    @app.get("/gmail")
+    def gmail_status():
+        return app.state.gmail.status()
+
+    @app.post("/gmail/connect")
+    def gmail_connect():
+        return app.state.gmail.connect()
+
+    @app.post("/gmail/disconnect")
+    def gmail_disconnect():
+        app.state.gmail.disconnect()
+        return {"ok": True}
+
+    @app.get("/gmail/important")
+    def gmail_important():
+        return app.state.gmail.important()
+
+    from io_assistant.widgets.tasks import alerts as widget_alerts, pending_tasks
+
+    @app.get("/tasks")
+    def tasks_pending(limit: int = 50):
+        import datetime as _dt
+
+        with factory() as s:
+            return pending_tasks(s, _dt.datetime.now(_dt.timezone.utc), limit=max(1, min(limit, 200)))
+
+    @app.get("/alerts")
+    def alerts_list():
+        import datetime as _dt
+
+        with factory() as s:
+            return widget_alerts(s, _dt.datetime.now(_dt.timezone.utc))
+
+    from io_assistant.sync.manager import SyncManager
+
+    sync = SyncManager(config, factory)
+    app.state.sync = sync
+    # background sync only in production (create_app owns its engine)
+    if engine is None and config.sync.enabled:
+        sync.start()
+
+        @app.on_event("shutdown")
+        def _stop_sync():
+            sync.stop()
+
+    @app.get("/sync")
+    def sync_status():
+        return app.state.sync.status()
+
+    @app.post("/sync/now")
+    def sync_now():
+        return app.state.sync.sync_now()
+
+    @app.post("/sync/signin")
+    def sync_signin():
+        return app.state.sync.sign_in()
+
+    @app.post("/sync/signout")
+    def sync_signout():
+        app.state.sync.sign_out()
+        return {"ok": True}
+
+    @app.get("/update")
+    def update_status(refresh: bool = False):
+        if not config.updates.enabled:
+            return {"enabled": False, "available": False}
+        u = app.state.updater
+        st = u.check_now() if refresh else u.status
+        return {"enabled": True, "repo": u.repo is not None, **st.as_dict()}
+
+    @app.post("/update/apply")
+    def update_apply():
+        u = app.state.updater
+        st = u.status
+        if not config.updates.enabled or u.repo is None:
+            raise HTTPException(status_code=409, detail="Updates aren't available: no git checkout found.")
+        if not st.available:
+            raise HTTPException(status_code=409, detail="IO is already up to date.")
+        if st.dirty:
+            raise HTTPException(
+                status_code=409,
+                detail="You have local changes to tracked files. Commit or discard them, then try again.")
+        app.state.spawn_update(u.repo, "exe" if getattr(sys, "frozen", False) else "dev")
+        app.state.exit_fn()
+        return {"ok": True}
 
     app.state.index_queue = None
     if config.files.enabled:
@@ -222,6 +576,7 @@ def create_app(
         iq = IndexQueue(factory, indexer, gate)
         iq.start()
         app.state.index_queue = iq
+        orchestrator._index_queue = iq   # so _file_open defers indexing too
 
         @app.on_event("shutdown")
         def _stop_queue():
@@ -316,16 +671,21 @@ def create_app(
                 raise HTTPException(status_code=400, detail=e.reason)
             with factory() as s:
                 node = file_index.get(s, gate.key(p))
-            tp = node.thumb_path if node else None
-            if tp and Path(tp).is_file():
-                return FileResponse(tp, media_type="image/webp")
-            import os as _os
-            made = make_thumb(
-                p, "image",
-                Path(_os.path.expanduser(config.files.thumbs_dir)),
-                path_key=gate.key(p))
-            if made is None:
-                raise HTTPException(status_code=404, detail="no thumbnail")
+                tp = node.thumb_path if node else None
+                if tp and Path(tp).is_file():
+                    return FileResponse(tp, media_type="image/webp")
+                import os as _os
+
+                made = make_thumb(
+                    p, (node.media_kind if node else None) or "image",
+                    Path(_os.path.expanduser(config.files.thumbs_dir)),
+                    path_key=gate.key(p))
+                if made is None:
+                    raise HTTPException(status_code=404, detail="no thumbnail")
+                # persist so this generate-on-miss happens exactly once
+                if node is not None:
+                    node.thumb_path = str(made)
+                    s.commit()
             return FileResponse(str(made), media_type="image/webp")
 
         @app.post("/files/open")
@@ -343,8 +703,9 @@ def create_app(
                                             detail="folder not found")
                     target = res.path
                 try:
-                    card = _open_folder(s, target, gate=gate, indexer=indexer,
-                                        index=file_index, config=config.files)
+                    card = _open_folder(s, target, gate=gate,
+                                        index=file_index, config=config.files,
+                                        index_queue=app.state.index_queue)
                     s.commit()
                 except AccessDenied as e:
                     raise HTTPException(status_code=400, detail=e.reason)
@@ -366,6 +727,7 @@ def create_app(
                         backend=orchestrator._backend,
                         embedder=orchestrator._embedder,
                         resolver_cfg=config.resolver,
+                        owner_name=config.owner_name,
                         now=_dt.datetime.now(_dt.timezone.utc))
                 except AccessDenied as e:
                     raise HTTPException(status_code=400, detail=e.reason)
@@ -387,27 +749,17 @@ def create_app(
                     gate=gate, index=file_index, backend=orchestrator._backend,
                     embedder=orchestrator._embedder,
                     resolver_cfg=config.resolver,
+                    owner_name=config.owner_name,
                     now=_dt.datetime.now(_dt.timezone.utc),
                     confirmed=True, extraction=pending.extraction)
                 s.commit()
             return _caption_out(res)
 
-        @app.post("/files/transcribe")
-        def files_transcribe(audio: UploadFile):
-            try:
-                transcriber = app.state.voice.transcriber()
-            except VoiceUnavailable as e:
-                raise HTTPException(status_code=503, detail=e.reason)
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(audio.file.read())
-                tmp_name = tmp.name
-            tr = transcriber.transcribe(tmp_name)
-            if not tr.text.strip():
-                raise HTTPException(status_code=422, detail="no speech")
-            return {"transcript": tr.text, "confidence": tr.confidence}
-
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
+        import asyncio
+        import queue as _queue
+
         await sock.accept()
         try:
             while True:
@@ -417,10 +769,83 @@ def create_app(
                 except Exception as e:
                     await sock.send_json({"type": "error", "message": str(e)})
                     continue
-                turn = _run(body)
+
+                evq: _queue.Queue = _queue.Queue()
+                task = asyncio.create_task(
+                    asyncio.to_thread(_run, body,
+                                      lambda s, d: evq.put_nowait((s, d)))
+                )
+                while True:
+                    try:
+                        stage, detail = evq.get_nowait()
+                        await sock.send_json({"type": "progress",
+                                              "stage": stage, "detail": detail})
+                        continue
+                    except _queue.Empty:
+                        pass
+                    if task.done():
+                        break
+                    await asyncio.sleep(0.05)
+                while not evq.empty():
+                    stage, detail = evq.get_nowait()
+                    await sock.send_json({"type": "progress",
+                                          "stage": stage, "detail": detail})
+                turn = task.result()
                 await sock.send_json({"type": "answer", **turn.model_dump()})
         except WebSocketDisconnect:
             return
+
+    @app.websocket("/ws/transcribe")
+    async def ws_transcribe(sock: WebSocket):
+        """Local real-time STT. Client streams 16 kHz mono PCM16 as binary
+        frames; a text frame '{"type":"end"}' (or disconnect) finishes.
+        Server pushes {"type":"partial","text":...} as words firm up and one
+        {"type":"final","text":...} at the end."""
+        import asyncio
+
+        await sock.accept()
+        if config.voice.stt_provider != "whisper-stream":
+            await sock.send_json({"type": "error", "message": "voice.stt_provider is not 'whisper-stream'"})
+            await sock.close()
+            return
+        try:
+            session = app.state.voice.streamer().session()
+        except VoiceUnavailable as e:
+            await sock.send_json({"type": "error", "message": e.reason})
+            await sock.close()
+            return
+
+        async def emit_partials():
+            while True:
+                await asyncio.sleep(0.4)
+                try:
+                    text = await asyncio.to_thread(session.poll)
+                except Exception as e:  # noqa: BLE001
+                    await sock.send_json({"type": "error", "message": str(e)})
+                    return
+                if text:
+                    await sock.send_json({"type": "partial", "text": text})
+
+        pump = asyncio.create_task(emit_partials())
+        try:
+            while True:
+                msg = await sock.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                if (b := msg.get("bytes")) is not None:
+                    session.feed(b)
+                elif (t := msg.get("text")) is not None and '"end"' in t:
+                    break
+        except WebSocketDisconnect:
+            pass
+        finally:
+            pump.cancel()
+        try:
+            final = await asyncio.to_thread(session.finish)
+            await sock.send_json({"type": "final", "text": final})
+        except Exception:  # noqa: BLE001
+            pass
+        await sock.close()
 
     frontend = (
         Path(config.service.frontend_dir)

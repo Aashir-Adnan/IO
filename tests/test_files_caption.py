@@ -42,6 +42,28 @@ def test_caption_links_entities_no_record(db, config, fake_backend, tmp_path):
 
 
 @requires_db
+def test_caption_writes_tokenised_tags(db, config, fake_backend, tmp_path):
+    (tmp_path / "a.jpg").write_bytes(b"x")
+    fake_backend.set_extraction(ExtractionResult(
+        people=[ExtractedPerson(name="Nafay", confidence=0.95)],
+        places=[ExtractedPlace(name="Hunza", confidence=0.9)],
+    ))
+    apply_caption(db, tmp_path / "a.jpg", "me and nafay in hunza", "text",
+                  owner_name="Aashir", **_args(config, tmp_path, fake_backend))
+    db.flush()
+    node = db.query(m.FileNode).one()
+    tags = {(t.norm, t.kind) for t in db.query(m.FileTag).filter_by(file_id=node.id)}
+    assert ("nafay", "person") in tags
+    assert ("hunza", "place") in tags
+    assert ("me", "self") in tags
+    assert ("aashir", "self") in tags
+    # the person/place tags carry the resolved entity link
+    nafay = db.query(m.FileTag).filter_by(file_id=node.id, norm="nafay").one()
+    assert nafay.entity_etype == "person" and nafay.entity_id is not None
+    assert all(t.media_kind == "image" for t in db.query(m.FileTag))
+
+
+@requires_db
 def test_caption_confirm_replays_without_reextraction(db, config, fake_backend, tmp_path):
     (tmp_path / "a.jpg").write_bytes(b"x")
     extraction = ExtractionResult(people=[ExtractedPerson(name="Zayn", confidence=0.9)])

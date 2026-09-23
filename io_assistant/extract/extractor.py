@@ -11,10 +11,10 @@ class Extractor:
     def __init__(self, backend: Backend):
         self._backend = backend
 
-    def run(self, utterance: str, now: datetime) -> ExtractionResult | None:
+    def run(self, utterance: str, now: datetime, *, context: str | None = None) -> ExtractionResult | None:
         for attempt in (1, 2):
             try:
-                return scrub_roles(self._backend.extract(utterance, now))
+                return scrub_roles(self._backend.extract(utterance, now, context=context))
             except BackendParseError:
                 if attempt == 2:
                     return None

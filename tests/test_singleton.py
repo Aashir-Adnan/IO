@@ -31,3 +31,31 @@ def test_surface_running_instance_no_service(capsys, config):
     config.service.port = 59999  # nothing listening
     surface_running_instance(config)
     assert "starting" in capsys.readouterr().out.lower()
+
+
+def test_surface_running_instance_raises_window(capsys, config, monkeypatch):
+    import httpx
+
+    from io_assistant.service.singleton import surface_running_instance
+
+    calls = {}
+
+    def fake_post(url, timeout=None):
+        calls["url"] = url
+        return type("R", (), {"status_code": 200})()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    surface_running_instance(config)
+    assert "front" in capsys.readouterr().out.lower()
+    assert calls["url"].endswith("/window/raise")
+
+
+def test_surface_running_instance_headless_service(capsys, config, monkeypatch):
+    import httpx
+
+    from io_assistant.service.singleton import surface_running_instance
+
+    monkeypatch.setattr(httpx, "post",
+                        lambda *a, **k: type("R", (), {"status_code": 404})())
+    surface_running_instance(config)
+    assert "io run" in capsys.readouterr().out.lower()

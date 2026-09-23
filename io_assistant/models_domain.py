@@ -48,6 +48,16 @@ class ExtractedOccasion(BaseModel):
     confidence: float
 
 
+class ExtractedCollection(BaseModel):
+    """The model's *proposal* for an ad-hoc personal list this record belongs to
+    (movies to watch, books to read, gift ideas). Python owns identity — see
+    io_assistant/collections/registry.py."""
+    name: str
+    item_noun: str | None = None
+    synonyms: list[str] = Field(default_factory=list)
+    checkable: bool = False
+
+
 class ExtractedRecord(BaseModel):
     kind: str
     domain: str | None = None
@@ -63,6 +73,7 @@ class ExtractedRecord(BaseModel):
     items: list[str] = Field(default_factory=list)
     occasions: list[str] = Field(default_factory=list)
     attributes: dict = Field(default_factory=dict)
+    collection: ExtractedCollection | None = None
     confidence: float
 
 
@@ -72,6 +83,31 @@ class ExtractionResult(BaseModel):
     items: list[ExtractedItem] = Field(default_factory=list)
     occasions: list[ExtractedOccasion] = Field(default_factory=list)
     records: list[ExtractedRecord] = Field(default_factory=list)
+
+
+# --- the unified "decide" plan --------------------------------------------------
+# One turn → one Plan → an ordered list of Steps. Today the split-mode planner
+# always emits exactly one step (mirrors route+extract); the combined planner
+# (backend.decide) may emit several. See docs/superpowers/specs/
+# 2026-09-09-unified-decide-pipeline-design.md.
+
+StepKind = Literal["store", "query", "file", "action", "unknown"]
+
+
+class Step(BaseModel):
+    kind: StepKind
+    # kind == "store": the extraction to persist (None → extraction failed)
+    extraction: "ExtractionResult | None" = None
+    # kind == "query" / "file": the (possibly lightly-rewritten) request text
+    question: str | None = None
+    # kind == "action": a capability slug from io_assistant.actions.registry
+    action: str | None = None
+    args: dict = Field(default_factory=dict)
+
+
+class Plan(BaseModel):
+    steps: list[Step] = Field(default_factory=list)
+    reply_hint: str | None = None   # optional phrasing seed for the responder
 
 
 # --- structured cards returned alongside a turn's prose -----------------------
@@ -106,6 +142,15 @@ class TaskListCard(BaseModel):
     items: list[TaskListItem] = Field(default_factory=list)
 
 
+class CollectionCard(BaseModel):
+    type: Literal["collection"] = "collection"
+    name: str
+    item_noun: str | None = None
+    kind_slug: str
+    checkable: bool = False
+    items: list[TaskListItem] = Field(default_factory=list)
+
+
 class SourcesCard(BaseModel):
     type: Literal["sources"] = "sources"
     record_ids: list[int] = Field(default_factory=list)
@@ -128,13 +173,15 @@ class FilesCard(BaseModel):
 
 class GalleryItem(BaseModel):
     path: str
-    media_kind: str
+    media_kind: str                 # image | video | audio | doc | file
     thumb_url: str | None = None
     raw_url: str
     has_thumb: bool = False
     caption: str | None = None
     entities: list[EntityRef] = Field(default_factory=list)
     captured_at: datetime | None = None
+    size_bytes: int | None = None
+    indexed: bool = True
 
 
 class GalleryCard(BaseModel):
@@ -144,7 +191,30 @@ class GalleryCard(BaseModel):
     items: list[GalleryItem] = Field(default_factory=list)
 
 
-Card = RecordCard | TaskListCard | SourcesCard | FilesCard | GalleryCard
+class WebSource(BaseModel):
+    title: str
+    url: str
+
+
+class WebCard(BaseModel):
+    type: Literal["web"] = "web"
+    tier: str                       # a | c | cache
+    kind: str                       # news | fact | instant
+    sources: list[WebSource] = Field(default_factory=list)
+    cached: bool = False
+
+
+Card = (
+    RecordCard | TaskListCard | CollectionCard | SourcesCard | FilesCard
+    | GalleryCard | WebCard
+)
+
+
+_KIND_ALIASES = {
+    "todo": "task", "to_do": "task", "task_reminder": "task",
+    "reminder": "task", "reminders": "task",
+    "chores": "chore",
+}
 
 
 def normalize_kind(raw: str) -> str:
@@ -155,6 +225,7 @@ def normalize_kind(raw: str) -> str:
     s = s.strip("_")
     s = s[:48]
     s = s.strip("_")
+    s = _KIND_ALIASES.get(s, s)
     return s or "note"
 
 

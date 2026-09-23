@@ -49,9 +49,23 @@ def test_register_and_list(client_files):
 
 
 @requires_db
-def test_register_denied_path(client_files):
-    r = client_files.post("/files", json={"path": "/etc"})
+def test_register_rejects_nonexistent_path(client_files):
+    r = client_files.post("/files", json={"path": str(client_files.tmp / "no" / "such")})
     assert r.status_code == 400
+
+
+@requires_db
+def test_register_outside_allowlist_is_allowed(client_files, tmp_path):
+    # Explicit registration self-authorizes — allowlist_roots only gate
+    # phrase-resolved / implicit access.
+    outside = tmp_path.parent / "io-outside-root"
+    outside.mkdir(exist_ok=True)
+    (outside / "note.md").write_text("hi")
+    r = client_files.post("/files", json={"path": str(outside)})
+    assert r.status_code == 200
+    # and it's now readable
+    c = client_files.get("/files/content", params={"path": str(outside / "note.md")})
+    assert c.status_code == 200
 
 
 @requires_db

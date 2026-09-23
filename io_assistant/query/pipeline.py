@@ -12,7 +12,8 @@ from io_assistant.query.planner import Planner
 from io_assistant.query.rank import rank
 from io_assistant.query.recur import expand_recurrences
 from io_assistant.query.respond import Responder
-from io_assistant.query.retrieve import retrieve_subquery
+from io_assistant.query.retrieve import pop_count, retrieve_subquery
+from io_assistant.progress import emit as _emit
 from io_assistant.resolve.resolver import EntityResolver
 
 __all__ = ["QueryAnswer", "QueryPipeline", "RecordRef"]
@@ -38,6 +39,7 @@ class QueryAnswer:
     n_rows: int
     source_record_ids: list[int] = field(default_factory=list)
     list_records: list[RecordRef] = field(default_factory=list)
+    count: int | None = None
 
 
 def _project(session, rows) -> list[RecordRef]:
@@ -75,16 +77,32 @@ class QueryPipeline:
     def answer(
         self, session, question: str, now: datetime, *, context: str | None = None
     ) -> QueryAnswer:
+        from io_assistant.collections.registry import routing_preamble
+
         embedder = self._embedder
-        plan = Planner(self._backend).run(question, now, context=context)
+        plan_ctx = routing_preamble(session) + (context or "") or None
+        plan = Planner(self._backend).run(question, now, context=plan_ctx)
+        _emit("Retrieval plan ready",
+              f"{len(plan.subqueries)} subquery(ies), "
+              f"target {plan.subqueries[0].target_type if plan.subqueries else '?'}")
 
         groups = []
         starts: list[datetime] = []
         ends: list[datetime] = []
+        count: int | None = None
         for sq in plan.subqueries:
             resolver = EntityResolver(session, embedder, self._cfg)
+            _emit("Resolving people & places", ", ".join(sq.entities) or "—")
             ids = resolve_query_entities(resolver, session, sq.entities)
-            groups.append(retrieve_subquery(session, embedder, sq, ids, now))
+            rows = retrieve_subquery(session, embedder, sq, ids, now)
+            # A "count" subquery's result is a synthetic `_Count` carrier, not
+            # a real row — pop it out here, before `rank()`, so it never gets
+            # scored (it has no date and would rank like a very old row),
+            # merged, or recurrence-expanded. See retrieve.py::pop_count.
+            c, rows = pop_count(rows)
+            if c is not None:
+                count = c
+            groups.append(rows)
             if sq.time_window is not None:
                 if sq.time_window.start is not None:
                     starts.append(sq.time_window.start)
@@ -97,16 +115,29 @@ class QueryPipeline:
         hi = max(ends, default=None)
         expanded = expand_recurrences(ranked, lo, hi, now=now)
         expanded.sort(key=lambda r: r.score, reverse=True)
-        final = expanded[:_TOP_N]
+        data_rows = expanded[:_TOP_N]
 
-        text = Responder(self._backend).run(
-            question, final, plan.answer_shape, context=context
-        )
-        record_refs = _project(session, final)
+        _emit("Writing the answer", f"{len(data_rows)} row(s) matched")
+        if count is not None:
+            # The phrasing model states the number, not counts rows itself.
+            # `force=True` because a pure count subquery has no list rows at
+            # all — Responder.run's usual "no rows -> empty answer"
+            # short-circuit must not fire here.
+            count_question = f"{question} (there are {count} matching items)"
+            text = Responder(self._backend).run(
+                count_question, data_rows, plan.answer_shape, now=now,
+                context=context, force=True,
+            )
+        else:
+            text = Responder(self._backend).run(
+                question, data_rows, plan.answer_shape, now=now, context=context
+            )
+        record_refs = _project(session, data_rows)
         return QueryAnswer(
             text=text,
             shape=plan.answer_shape,
-            n_rows=len(final),
+            n_rows=len(data_rows),
             source_record_ids=[r.record_id for r in record_refs],
             list_records=record_refs,
+            count=count,
         )

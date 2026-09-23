@@ -20,6 +20,15 @@ def test_planner_grounds_backend_output(fake_backend):
     assert sq.time_window.start.date().isoformat() == "2026-09-01"
 
 
+def test_plan_prompt_has_the_open_tasks_rule():
+    from importlib import resources
+
+    txt = resources.files("io_assistant.prompts").joinpath("plan.txt").read_text()
+    low = txt.lower()
+    assert "on my plate" in low
+    assert '"open"' in low and "leave time_window null" in low
+
+
 def test_planner_falls_back_on_unparseable(fake_backend):
     from io_assistant.backend.interface import BackendParseError
 

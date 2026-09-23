@@ -15,10 +15,16 @@ records: [{"kind": str, "domain": str|null, "title": str, "body": str|null,
            "when_phrase": str|null, "due_phrase": str|null, "recurrence_phrase": str|null,
            "status": "open"|"done"|"dropped"|null, "assigned_by": str|null,
            "people": [str], "places": [str], "items": [str], "occasions": [str],
-           "attributes": {}, "confidence": 0..1}]
+           "attributes": {}, "confidence": 0..1,
+           "collection": {"name": str, "item_noun": str, "synonyms": [str], "checkable": bool} | null}]
 kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
       or a short coined slug like "gym_session" / "job_meeting" / "expense".
 domain: one of social, job, home, health, finance, learning, errand, other.
+collection: set ONLY when this record is an item the user is adding to a
+      personal list that is not event/task/chore (movies/shows to watch, books
+      to read, gift ideas, restaurants to try). Use the SAME kind slug you would
+      use to ask for the whole list. "checkable": true if items get watched /
+      read / done. Fill it on the first item; you may omit it on later items.
 Do NOT resolve dates - copy the raw phrase into *_phrase fields.'''
 
 # Worked examples as INPUT -> OUTPUT pairs (one line of JSON per OUTPUT, no code
@@ -63,6 +69,16 @@ _EXAMPLES = [
          "records": [{"kind": "gym_session", "domain": "health", "title": "chest and triceps",
                       "body": "bench up to 80kg", "when_phrase": "today",
                       "attributes": {"lifts": {"bench_kg": 80}}, "confidence": 0.85}]},
+    ),
+    (
+        "add Dune Part Two to my list of movies I want to watch",
+        {"people": [], "places": [], "items": [], "occasions": [],
+         "records": [{"kind": "watchlist", "domain": "other",
+                      "title": "Dune Part Two", "status": "open",
+                      "collection": {"name": "watchlist", "item_noun": "movie or show",
+                                     "synonyms": ["movies to watch", "shows to watch", "watchlist"],
+                                     "checkable": True},
+                      "attributes": {"medium": "movie"}, "confidence": 0.9}]},
     ),
 ]
 

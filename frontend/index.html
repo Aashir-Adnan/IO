@@ -4,19 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IO</title>
+  <script>
+    // Apply the saved theme before first paint (default: dark).
+    try {
+      var t = localStorage.getItem("io.theme");
+      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  </script>
   <link rel="stylesheet" href="./tokens.css" />
   <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
   <div class="win" id="win">
-    <div class="winctl" id="winctl">
-      <button class="winctl-btn" id="win-min" title="Minimize" aria-label="Minimize"></button>
-      <button class="winctl-btn" id="win-full" title="Fullscreen" aria-label="Fullscreen"></button>
-      <button class="winctl-btn danger" id="win-close" title="Close" aria-label="Close"></button>
-    </div>
-    <button class="gear" id="gear" title="Settings" aria-label="Settings"></button>
+    <header class="topbar" id="topbar">
+      <div class="winctl">
+        <button class="winctl-btn" id="win-min" title="Minimize" aria-label="Minimize"></button>
+        <button class="winctl-btn" id="win-full" title="Fullscreen" aria-label="Fullscreen"></button>
+        <button class="winctl-btn danger" id="win-close" title="Close" aria-label="Close"></button>
+      </div>
+      <span class="topbar-brand">IO</span>
+      <span class="topbar-status" id="status"></span>
+      <span class="topbar-sync" id="sync-dot" hidden></span>
+      <button class="topbar-update" id="update-pill" hidden></button>
+      <button class="topbar-gear" id="memory" title="Memory" aria-label="Memory"></button>
+      <button class="topbar-gear" id="gear" title="Settings" aria-label="Settings"></button>
+    </header>
     <main id="view"></main>
-    <aside class="drawer" id="drawer" hidden></aside>
     <div class="settings-scrim" id="settings-scrim" hidden></div>
     <aside class="settings" id="settings" hidden></aside>
   </div>

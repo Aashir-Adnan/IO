@@ -18,11 +18,20 @@ class BackendConfig(BaseModel):
     provider: Literal["local", "anthropic", "hybrid"]
     profile: Literal["light", "quality"]
     anthropic_model: str
+    # "auto": one combined route+extract+plan call on anthropic/hybrid (and
+    # local "quality"), the tuned two-step on local "light". "combined" /
+    # "split" force it. Parse failure always falls back to split.
+    decide: Literal["auto", "combined", "split"] = "auto"
     ollama_url: str
     ollama_keep_alive: str
     instruct_model: str
     embed_model: str
     num_thread: int
+    # "auto": Ollama when reachable, else the in-process fastembed model (same
+    # nomic-embed-text v1.5, 768-d, so vectors are interchangeable).
+    embedder: Literal["auto", "ollama", "builtin"] = "auto"
+    builtin_embed_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    models_dir: str = "~/.local/share/io/models"
 
 class ResolverConfig(BaseModel):
     fuzzy_threshold: int
@@ -33,6 +42,11 @@ class ServiceConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
     frontend_dir: str | None = None
+    # "" (default): unchanged, loopback-only, no auth. Set both this AND host
+    # to a reachable interface (e.g. your Tailscale IP) to let another of your
+    # own devices — the phone app — call this service. See
+    # rules/local-first.md case 11.
+    remote_token: str = ""
 
 class VoiceConfig(BaseModel):
     tts_voice: str = "en_US-hfc_female-medium"
@@ -43,9 +57,31 @@ class VoiceConfig(BaseModel):
     noise_scale: float = 0.667
     noise_w_scale: float = 0.85
 
+    # Speech-to-text mode:
+    #   "whisper"        local, batch — transcribes when you stop talking.
+    #   "whisper-stream" local, real-time — a rolling faster-whisper loop emits
+    #                    words + corrections as you speak. Loads a ~1.5 GB
+    #                    model and pins the GPU during a call (best on a GPU;
+    #                    on CPU it lags). Fully offline.
+    #   "soniox"         cloud, real-time — needs SONIOX_API_KEY (see
+    #                    rules/local-first.md). Falls back to "whisper" if unset.
+    stt_provider: Literal["whisper", "whisper-stream", "soniox"] = "whisper"
+    soniox_model: str = "stt-rt-v5"
+    whisper_stream_model: str = "large-v3-turbo"
+
     @property
     def resolved_voice_path(self) -> Path:
         return Path(expanduser(self.voices_dir)) / f"{self.tts_voice}.onnx"
+
+    @property
+    def soniox_api_key(self) -> str | None:
+        return os.environ.get("SONIOX_API_KEY") or None
+
+    @property
+    def stt_streaming(self) -> bool:
+        if self.stt_provider == "whisper-stream":
+            return True
+        return self.stt_provider == "soniox" and bool(self.soniox_api_key)
 
 class CaptureConfig(BaseModel):
     hotkey: str = "<ctrl>+<alt>+space"
@@ -87,6 +123,41 @@ class FilesConfig(BaseModel):
     follow_symlinks: bool = False
     thumbs_dir: str = "~/.local/share/io/thumbs"
 
+class WebConfig(BaseModel):
+    # Opt-in web-backed answers. Default engine is a self-hosted SearXNG in
+    # IO's own Docker stack (localhost). A cloud provider is a deliberate
+    # exception — see rules/local-first.md. enabled=false => general-knowledge
+    # questions stay "unknown", exactly as before.
+    enabled: bool = False
+    provider: Literal["searxng", "none"] = "searxng"
+    searxng_url: str = "http://localhost:8888"
+    max_pages: int = 4
+    fetch_bytes: int = 400_000
+    news_ttl_min: int = 30
+    fact_ttl_min: int = 360
+    instant_ttl_min: int = 1440
+
+
+class UpdatesConfig(BaseModel):
+    # Self-update from the git remote (see rules/local-first.md, case 7).
+    enabled: bool = True
+    remote: str = "origin"
+    branch: str = ""          # "" = the branch currently checked out
+    interval_h: float = 6.0
+    repo_dir: str = ""        # "" = auto (source checkout, else CWD)
+
+
+class SyncConfig(BaseModel):
+    # Memory sync across devices through the user's own Google Drive (appData
+    # folder) or, for a folder, any directory (a OneDrive/Dropbox folder works).
+    # Opt-in; see rules/local-first.md case 8 and the memory-sync spec.
+    enabled: bool = False
+    folder: str = ""           # set => sync through this directory instead of Drive
+    client_id: str = ""        # your Google Cloud OAuth "Desktop app" client
+    client_secret: str = ""    # not confidential for an installed app
+    interval_s: float = 60.0
+
+
 class Config(BaseModel):
     database_url: str
     embedding_dim: int
@@ -97,6 +168,20 @@ class Config(BaseModel):
     capture: CaptureConfig = CaptureConfig()
     ui: UiConfig = UiConfig()
     files: FilesConfig = FilesConfig()
+    web: WebConfig = WebConfig()
+    updates: UpdatesConfig = UpdatesConfig()
+    sync: SyncConfig = SyncConfig()
+
+    @property
+    def owner_name(self) -> str:
+        """The user's own name — for resolving "me"/"I"/"my" in captions and
+        queries. `ui.name`, else the OS user, else "" (no self tag)."""
+        return (
+            self.ui.name
+            or os.environ.get("USERNAME")
+            or os.environ.get("USER")
+            or ""
+        )
 
 _WHISPER_BY_PROFILE = {"light": "base", "quality": "small"}
 
@@ -120,14 +205,29 @@ def config_source(path: str | Path | None = None) -> Path:
             return p
     return _candidate_config_paths()[-1]
 
+def deep_merge(base: dict, over: dict) -> dict:
+    """`over` wins; nested tables merge key by key."""
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+def _read_toml(p: Path) -> dict:
+    try:
+        return tomllib.loads(p.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"invalid TOML in {p}: {e}") from e
+
 def load_config(path: str | Path | None = None) -> Config:
     p = config_source(path)
     if not p.exists():
         raise ConfigError(f"config file not found: {p}")
-    try:
-        raw = tomllib.loads(p.read_text())
-    except tomllib.TOMLDecodeError as e:
-        raise ConfigError(f"invalid TOML in {p}: {e}") from e
+    raw = _read_toml(p)
+    # user overrides live in a gitignored file beside config.toml, so updates
+    # can change the shipped defaults without touching them
+    local = p.with_name("config.local.toml")
+    if local.exists():
+        raw = deep_merge(raw, _read_toml(local))
 
     # env overrides
     if env_db := os.environ.get("IO_DATABASE_URL"):

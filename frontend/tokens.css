@@ -1,5 +1,11 @@
-/* Nocturne tokens (from docs/design/nocturne/styles.css) + IO app additions.
-   Local-first: fonts are vendored woff2, no @import, no CDN. */
+/* IO design tokens. Local-first: fonts are vendored woff2, no @import, no CDN.
+
+   Two themes behind one set of variable names. The layout (docs/design/IO
+   Glass.dc.html) is identical in both; only the palette swaps.
+     :root                    → dark  (default — Nocturne)
+     :root[data-theme="light"] → light (pearl glass)
+   index.html applies the saved choice (localStorage "io.theme") before first
+   paint; the Settings sheet toggles it. */
 
 @font-face {
   font-family: "Inter"; font-weight: 300; font-style: normal; font-display: swap;
@@ -23,12 +29,18 @@
 }
 
 :root {
-  --color-bg: #161826;
-  --color-surface: #232532;
-  --color-text: #e9e9ed;
+  /* accent ramp — shared by both themes (the blurple is the brand) */
   --color-accent: #9184d9;
   --color-accent-2: #a7a1db;
-  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
 
   --color-neutral-100: #f3f5fe;
   --color-neutral-200: #e4e7f5;
@@ -40,42 +52,107 @@
   --color-neutral-800: #3f424d;
   --color-neutral-900: #292b31;
 
-  --color-accent-100: #f5f4ff;
-  --color-accent-200: #e7e5fe;
-  --color-accent-300: #d2cefd;
-  --color-accent-400: #b5abfc;
-  --color-accent-500: #968ae0;
-  --color-accent-600: #796cbf;
-  --color-accent-700: #5d5294;
-  --color-accent-800: #423a6a;
-  --color-accent-900: #2b2741;
-
   --font-heading: "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
 
-  --space-1: 2.8px;
-  --space-2: 5.6px;
-  --space-3: 8.4px;
-  --space-4: 11.2px;
-  --space-6: 16.8px;
-  --space-8: 22.4px;
+  --space-1: 2.8px;  --space-2: 5.6px;  --space-3: 8.4px;
+  --space-4: 11.2px; --space-6: 16.8px; --space-8: 22.4px;
+  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 14px;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 14px;
+  /* ── DARK (default) ─────────────────────────────────────────────────── */
+  --ground:  #0d0e15;
+  --body-bg: radial-gradient(120% 120% at 50% 0%, #16172180, transparent 70%), #0d0e15;
 
-  --shadow-sm: 0 0 0 1px #3f424d;
-  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+  --pearl:      #1b1d2b;   /* main panel / window body   */
+  --pearl-2:    #20222f;   /* ask bar / composer         */
+  --pearl-3:    #181a26;   /* rails / secondary surfaces  */
+  --pearl-edge: #33364a;   /* panel borders              */
 
-  /* --- IO app additions --- */
-  --color-page: #0f111c;
-  --color-panel: #1b1d2b;
-  --color-panel-2: #1d1e30;
-  --color-hair: #292b31;
-  --color-hair-2: #33364a;
-  --glow: 0 0 10px 2px rgba(145, 132, 217, 0.7);
-  --orb-core: radial-gradient(circle at 38% 34%, #d2cefd, #796cbf 58%, #423a6a);
-  --orb-halo: radial-gradient(circle, rgba(145, 132, 217, 0.35), transparent 70%);
+  --ink:   #e9e9ed;
+  --ink-2: #9ea2b3;
+  --ink-3: #6d7183;
+  --hair:  #262832;
+  --hair-strong: #363a4d;
+
+  --glass: none;           /* no backdrop-filter in dark — panels are opaque */
+
+  --sheen:       rgba(255, 255, 255, 0.05);
+  --sheen-2:     rgba(255, 255, 255, 0.08);
+  --fill:        rgba(255, 255, 255, 0.045);
+  --fill-2:      rgba(255, 255, 255, 0.03);
+  --fill-strong: rgba(255, 255, 255, 0.08);
+  --hover:       rgba(255, 255, 255, 0.055);
+  --wash:        rgba(0, 0, 0, 0.25);
+  --scrim:       rgba(0, 0, 0, 0.55);
+  --shadow-drop:   rgba(0, 0, 0, 0.40);
+  --shadow-drop-2: rgba(0, 0, 0, 0.50);
+  --tile-ring:  rgba(255, 255, 255, 0.07);
+  --orb-ring:   #33364a;
+  --rec: #e5675b;
+  --link: var(--color-accent-400);
+  --sheet: #1c1e2b;        /* settings sheet — opaque in dark */
+  --win-bg:
+    radial-gradient(130% 90% at 12% -10%, rgba(150, 138, 224, 0.16), transparent 52%),
+    radial-gradient(120% 100% at 108% 108%, rgba(122, 108, 191, 0.13), transparent 46%),
+    linear-gradient(176deg, #1a1c29, #16172180 62%, #121320);
+
+  --shadow-sm: inset 0 0 0 1px var(--sheen);
+  --shadow-md: 0 6px 16px var(--shadow-drop), inset 0 0 0 1px var(--sheen);
+  --shadow-lg: 0 8px 20px var(--shadow-drop-2), inset 0 0 0 1px var(--sheen-2);
+  --shadow-window: 0 30px 70px var(--shadow-drop-2), inset 0 1px 0 var(--sheen);
+
+  /* legacy aliases still referenced by app.css */
+  --color-bg: var(--pearl);
+  --color-surface: var(--fill);
+  --color-text: var(--ink);
+  --color-divider: var(--hair);
+  --color-page: var(--ground);
+  --color-panel: var(--pearl);
+  --color-panel-2: var(--pearl-2);
+  --color-hair: var(--hair);
+  --color-hair-2: var(--hair-strong);
+  --glow: 0 0 26px rgba(145, 132, 217, 0.35);
+  --orb-core: radial-gradient(circle at 36% 32%, #ffffff, var(--color-accent-400) 46%, var(--color-accent-600));
+  --orb-halo: radial-gradient(circle, rgba(145, 132, 217, 0.34), transparent 70%);
+}
+
+/* ── LIGHT (pearl glass) ─────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  --ground: #c6c2d2;
+  --body-bg:
+    radial-gradient(120% 80% at 10% 0%, #d9d4e4, transparent 55%),
+    linear-gradient(158deg, #bcb7cd, #d4cfe0 46%, #aca7c2);
+
+  --pearl:      rgba(255, 255, 255, 0.42);
+  --pearl-2:    rgba(255, 255, 255, 0.26);
+  --pearl-3:    rgba(255, 255, 255, 0.14);
+  --pearl-edge: rgba(255, 255, 255, 0.55);
+
+  --ink:   #1d1f27;
+  --ink-2: #4b4f5c;
+  --ink-3: rgba(29, 31, 39, 0.42);
+  --hair:  rgba(29, 31, 39, 0.09);
+  --hair-strong: rgba(29, 31, 39, 0.16);
+
+  --glass: blur(34px) saturate(150%) brightness(1.06);
+
+  --sheen:       rgba(255, 255, 255, 0.55);
+  --sheen-2:     rgba(255, 255, 255, 0.60);
+  --fill:        rgba(255, 255, 255, 0.42);
+  --fill-2:      rgba(255, 255, 255, 0.34);
+  --fill-strong: rgba(255, 255, 255, 0.50);
+  --hover:       rgba(255, 255, 255, 0.40);
+  --wash:        rgba(29, 31, 39, 0.06);
+  --scrim:       rgba(40, 38, 60, 0.28);
+  --shadow-drop:   rgba(40, 38, 60, 0.14);
+  --shadow-drop-2: rgba(40, 38, 60, 0.16);
+  --tile-ring:  rgba(255, 255, 255, 0.60);
+  --orb-ring:   rgba(255, 255, 255, 0.70);
+  --rec: #d1483b;
+  --link: var(--color-accent-600);
+  --sheet: rgba(247, 246, 250, 0.90);
+  --win-bg: var(--pearl);
+
+  --shadow-window: 0 30px 70px var(--scrim), inset 0 1px 0 var(--sheen-2);
 }

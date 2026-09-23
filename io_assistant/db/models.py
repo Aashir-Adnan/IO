@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 from sqlalchemy import (
     BigInteger,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -26,7 +27,35 @@ from .base import Base
 EMBED_DIM = 768  # keep in sync with config.embedding_dim; migration owns the DDL
 
 
-class Utterance(Base):
+def _new_sync_id() -> str:
+    return str(uuid.uuid4())
+
+
+class SyncMixin:
+    """Global identity + dirty tracking for memory sync (migration 0010).
+    A row is dirty when synced_at IS NULL OR updated_at > synced_at."""
+    sync_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), nullable=False, unique=True,
+        default=_new_sync_id, server_default=text("gen_random_uuid()"),
+    )
+    synced_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class LinkSyncMixin:
+    synced_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+def _updated_at():
+    return mapped_column(DateTime(timezone=True), server_default=func.now(),
+                         onupdate=func.now(), nullable=False)
+
+
+
+class Utterance(SyncMixin, Base):
     __tablename__ = "utterances"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -36,9 +65,10 @@ class Utterance(Base):
     transcription_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     resolved_intent: Mapped[str | None] = mapped_column(String(16), nullable=True)
     marker: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
-class Person(Base):
+class Person(SyncMixin, Base):
     __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -54,7 +84,7 @@ class Person(Base):
     )
 
 
-class Place(Base):
+class Place(SyncMixin, Base):
     __tablename__ = "places"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -70,7 +100,7 @@ class Place(Base):
     )
 
 
-class Item(Base):
+class Item(SyncMixin, Base):
     __tablename__ = "items"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -86,7 +116,7 @@ class Item(Base):
     )
 
 
-class Occasion(Base):
+class Occasion(SyncMixin, Base):
     __tablename__ = "occasions"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -100,7 +130,7 @@ class Occasion(Base):
     )
 
 
-class Record(Base):
+class Record(SyncMixin, Base):
     __tablename__ = "records"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -111,6 +141,9 @@ class Record(Base):
     occurred_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str | None] = mapped_column(String(12), nullable=True)  # open|done|dropped
+    completed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     recurrence_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
     assigned_by_person_id: Mapped[int | None] = mapped_column(
         ForeignKey("people.id", ondelete="SET NULL"), nullable=True
@@ -126,7 +159,37 @@ class Record(Base):
     )
 
 
-class RecordPerson(Base):
+class Collection(SyncMixin, Base):
+    """A learned descriptor for an ad-hoc personal list (movies to watch, books
+    to read, gift ideas). Created the first time the extraction model flags a
+    record as an item in such a list; keyed by the records.kind slug the items
+    share. synonyms / item_noun feed the plan/decide prompts so the list stays
+    findable. The model only *proposes* — Python (collections/registry.py) owns
+    identity."""
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind_slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    item_noun: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synonyms: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    field_hint: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    example_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("records.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+
+
+class RecordPerson(LinkSyncMixin, Base):
     __tablename__ = "record_people"
 
     record_id: Mapped[int] = mapped_column(
@@ -138,7 +201,7 @@ class RecordPerson(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordPlace(Base):
+class RecordPlace(LinkSyncMixin, Base):
     __tablename__ = "record_places"
 
     record_id: Mapped[int] = mapped_column(
@@ -150,7 +213,7 @@ class RecordPlace(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordItem(Base):
+class RecordItem(LinkSyncMixin, Base):
     __tablename__ = "record_items"
 
     record_id: Mapped[int] = mapped_column(
@@ -162,7 +225,7 @@ class RecordItem(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class RecordOccasion(Base):
+class RecordOccasion(LinkSyncMixin, Base):
     __tablename__ = "record_occasions"
 
     record_id: Mapped[int] = mapped_column(
@@ -174,7 +237,7 @@ class RecordOccasion(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class OccasionPerson(Base):
+class OccasionPerson(LinkSyncMixin, Base):
     __tablename__ = "occasion_people"
 
     occasion_id: Mapped[int] = mapped_column(
@@ -186,7 +249,7 @@ class OccasionPerson(Base):
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class Conversation(Base):
+class Conversation(SyncMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (Index("ix_conversations_last_at", "last_at"),)
 
@@ -198,9 +261,10 @@ class Conversation(Base):
     last_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
-class Message(Base):
+class Message(SyncMixin, Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_conversation_id_created_at", "conversation_id", "created_at"),
@@ -222,6 +286,7 @@ class Message(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[dt.datetime] = _updated_at()
 
 
 class FileNode(Base):
@@ -344,3 +409,125 @@ class FileCaption(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class FileTag(Base):
+    """A salient term pulled from a file's caption or summary — the fast,
+    fuzzy surface layer over FileEntityLink. "me and nafay in hunza" tags a
+    picture with ("Nafay", person), ("Hunza", place), ("<owner>", self),
+    ("Me", self). `media_kind` is denormalised so "photos of X" is one query.
+    """
+    __tablename__ = "file_tags"
+    __table_args__ = (
+        Index("ix_file_tags_uniq", "file_id", "norm", "kind", unique=True),
+        Index("ix_file_tags_norm", "norm"),
+        Index("ix_file_tags_media_norm", "media_kind", "norm"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    file_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("file_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    term: Mapped[str] = mapped_column(Text, nullable=False)
+    norm: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    media_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    entity_etype: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(String(8), nullable=False, server_default="caption")
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class WebCache(Base):
+    """A web-backed answer held until expires_at — a Tier-A templated reply or
+    a Tier-C single-call synthesis. Keyed by normalised query + kind so a
+    repeat question inside the TTL costs zero network and zero model tokens."""
+    __tablename__ = "web_cache"
+    __table_args__ = (
+        Index("ix_web_cache_uniq", "query_norm", "kind", unique=True),
+        Index("ix_web_cache_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    query_norm: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # news|fact|instant
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    tier: Mapped[str] = mapped_column(String(1), nullable=False)  # a|c
+    fetched_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Tracker(Base):
+    """Tier B: a labelled web source polled on an interval. Each poll writes a
+    `reading` record, so "petrol today vs yesterday" is a query over memory."""
+    __tablename__ = "trackers"
+    __table_args__ = (
+        Index("ix_trackers_norm", "norm", unique=True),
+        Index("ix_trackers_enabled", "enabled", postgresql_where=text("enabled")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    norm: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    extractor: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    interval_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="720")
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    last_polled_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# --- memory sync bookkeeping (migration 0010) ------------------------------
+class SyncTombstone(Base):
+    """A delete or merge of a synced row, to propagate to other devices."""
+    __tablename__ = "sync_tombstones"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    sync_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    merged_into: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    deleted_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SyncAlias(Base):
+    """A merged-away sync_id -> the surviving sync_id."""
+    __tablename__ = "sync_aliases"
+
+    alias: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    canonical: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+
+
+class SyncState(Base):
+    """Per-device sync counters (own seq, last applied seq per peer, ...)."""
+    __tablename__ = "sync_state"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+from .sync_hooks import install as _install_sync_hooks  # noqa: E402
+
+_install_sync_hooks(
+    (Utterance, Person, Place, Item, Occasion, Record, Collection, Conversation, Message),
+    SyncTombstone,
+)

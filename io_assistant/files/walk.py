@@ -41,7 +41,12 @@ def classify_media(suffix: str, config: FilesConfig) -> str | None:
     return "video" if s in _VIDEO_EXTS else "image"
 
 
-def walk_dir(root: Path, config: FilesConfig, gate: AccessGate) -> Iterator[FoundPath]:
+def walk_dir(root: Path, config: FilesConfig, gate: AccessGate, *,
+             include_all: bool = False) -> Iterator[FoundPath]:
+    """Yield indexable files under ``root``. With ``include_all=True`` yield
+    *every* file (any extension) — for listing a folder's full contents in the
+    UI even when most files aren't indexed; the cap becomes a soft stop
+    instead of an error."""
     exts = {e.lower() for e in (*config.index_extensions, *config.media_extensions)}
     cap = config.max_files_per_registration
     count = 0
@@ -54,7 +59,7 @@ def walk_dir(root: Path, config: FilesConfig, gate: AccessGate) -> Iterator[Foun
         ]
         for name in filenames:
             p = d / name
-            if p.suffix.lower() not in exts:
+            if not include_all and p.suffix.lower() not in exts:
                 continue
             if gate.is_excluded(p):
                 continue
@@ -66,6 +71,8 @@ def walk_dir(root: Path, config: FilesConfig, gate: AccessGate) -> Iterator[Foun
                 continue
             count += 1
             if count > cap:
+                if include_all:
+                    return
                 raise RegistrationTooLarge(count, cap)
             yield FoundPath(
                 path=p,

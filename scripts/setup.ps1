@@ -11,9 +11,15 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     $env:Path = "$HOME\.local\bin;$env:Path"
 }
 
-Write-Host "2/5  Pulling Ollama models..."
-ollama pull llama3.2:3b
-ollama pull nomic-embed-text
+$cfg = if (Test-Path config.toml) { Get-Content config.toml -Raw } else { "" }
+$needsOllama = ($cfg -notmatch '(?m)^\s*provider\s*=\s*"anthropic"') -or ($cfg -match '(?m)^\s*embedder\s*=\s*"ollama"')
+if ($needsOllama) {
+    Write-Host "2/5  Pulling Ollama models..."
+    ollama pull llama3.2:3b
+    ollama pull nomic-embed-text
+} else {
+    Write-Host "2/5  Skipping Ollama (Anthropic provider + built-in embedder)."
+}
 
 Write-Host "3/5  Starting PostgreSQL (Docker)..."
 docker compose up -d
@@ -30,6 +36,11 @@ docker compose exec -T db psql -U io -d io_test -c "CREATE EXTENSION IF NOT EXIS
 
 Write-Host "5/5  Writing .env (if missing)..."
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+
+if (-not $needsOllama) {
+    Write-Host "Fetching the built-in embedder model (one-time, ~520 MB)..."
+    uv run io doctor --fetch-embedder
+}
 
 Write-Host "`nRunning environment check..."
 & "$PSScriptRoot\check-env.ps1"

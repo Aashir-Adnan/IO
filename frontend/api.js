@@ -1,7 +1,15 @@
 // Thin client for the IO service. All calls are relative -> same origin (127.0.0.1).
 export function Api(base = "") {
   const b = base.replace(/\/$/, "");
-  const j = (r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); };
+  const j = async (r) => {
+    if (r.ok) return r.json();
+    let detail = "";
+    try { detail = (await r.json()).detail; } catch { /* no body */ }
+    const err = new Error(detail ? `${r.status} ${detail}` : `${r.status} ${r.statusText}`);
+    err.status = r.status;
+    err.detail = typeof detail === "string" ? detail : "";
+    throw err;
+  };
 
   return {
     async health() { return j(await fetch(`${b}/health`)); },
@@ -36,6 +44,25 @@ export function Api(base = "") {
     async conversations() { return j(await fetch(`${b}/conversations`)); },
     async newConversation() { return j(await fetch(`${b}/conversation`, { method: "POST" })); },
     async entity(etype, id) { return j(await fetch(`${b}/entity/${etype}/${id}`)); },
+    async deleteEntity(etype, id) {
+      return j(await fetch(`${b}/entity/${etype}/${id}`, { method: "DELETE" }));
+    },
+    async records({ limit = 300, kind, domain } = {}) {
+      const q = new URLSearchParams({ limit });
+      if (kind) q.set("kind", kind);
+      if (domain) q.set("domain", domain);
+      return j(await fetch(`${b}/records?${q}`));
+    },
+    async collections() { return j(await fetch(`${b}/collections`)); },
+    async editRecord(id, patch) {
+      return j(await fetch(`${b}/record/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      }));
+    },
+    async deleteRecord(id) {
+      return j(await fetch(`${b}/record/${id}`, { method: "DELETE" }));
+    },
 
     async files() { return j(await fetch(`${b}/files`)); },
     async registerFile(path) {
@@ -56,6 +83,26 @@ export function Api(base = "") {
         body: JSON.stringify({ path: path || null }),
       }));
     },
+    async tasks() { return j(await fetch(`${b}/tasks`)); },
+    async alerts() { return j(await fetch(`${b}/alerts`)); },
+    async widgets() { return j(await fetch(`${b}/widgets`)); },
+    async saveWidgets(doc) {
+      return j(await fetch(`${b}/widgets`, {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(doc),
+      }));
+    },
+    async weatherSearch(q) { return j(await fetch(`${b}/weather/search?q=` + encodeURIComponent(q))); },
+    async weather(lat, lon) { return j(await fetch(`${b}/weather?lat=${lat}&lon=${lon}`)); },
+    async gmail() { return j(await fetch(`${b}/gmail`)); },
+    async gmailConnect() { return j(await fetch(`${b}/gmail/connect`, { method: "POST" })); },
+    async gmailImportant() { return j(await fetch(`${b}/gmail/important`)); },
+    async sync() { return j(await fetch(`${b}/sync`)); },
+    async syncNow() { return j(await fetch(`${b}/sync/now`, { method: "POST" })); },
+    async syncSignIn() { return j(await fetch(`${b}/sync/signin`, { method: "POST" })); },
+    async syncSignOut() { return j(await fetch(`${b}/sync/signout`, { method: "POST" })); },
+    async update(refresh = false) { return j(await fetch(`${b}/update${refresh ? "?refresh=1" : ""}`)); },
+    async applyUpdate() { return j(await fetch(`${b}/update/apply`, { method: "POST" })); },
+
     async filesStatus() { return j(await fetch(`${b}/files/status`)); },
     async fileContent(path) {
       return j(await fetch(`${b}/files/content?path=` + encodeURIComponent(path)));
@@ -80,8 +127,15 @@ export function Api(base = "") {
     },
     async transcribeAudio(wavBlob) {
       const fd = new FormData();
-      fd.append("audio", wavBlob, "caption.wav");
-      return j(await fetch(`${b}/files/transcribe`, { method: "POST", body: fd }));
+      fd.append("audio", wavBlob, "speech.wav");
+      return j(await fetch(`${b}/voice/transcribe`, { method: "POST", body: fd }));
+    },
+    async sttMode() {
+      try { return j(await fetch(`${b}/voice/stt`)); }
+      catch { return { provider: "whisper", streaming: false }; }
+    },
+    async sttStreamToken() {
+      return j(await fetch(`${b}/voice/stream-token`, { method: "POST" }));
     },
 
     connectWs(onFrame) {

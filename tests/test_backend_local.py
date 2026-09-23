@@ -85,6 +85,27 @@ def test_local_route_includes_context(config, monkeypatch):
     assert "Recent conversation" in user_msg and "Nafay" in user_msg
 
 
+def test_local_extract_includes_context(config, monkeypatch):
+    """Finding 2: the known-lists vocabulary must reach the extract prompt,
+    not just route/plan/phrase."""
+    fc = _patch_chat(monkeypatch, '{"people":[],"places":[],"items":[],"occasions":[],"records":[]}')
+    LocalBackend(config).extract(
+        "add Oppenheimer to my list", dt.datetime.now(dt.timezone.utc),
+        context="Known lists (reuse the exact slug):\n- watchlist")
+    user_msg = fc.last["messages"][-1]["content"]
+    assert "Known lists" in user_msg and "watchlist" in user_msg
+
+
+def test_local_extract_context_empty_when_none(config, monkeypatch):
+    """render_context() is a no-op when no context is passed — the static
+    'reuse a known list's slug' rule always appears, but the actual
+    Recent-conversation/known-lists block must not."""
+    fc = _patch_chat(monkeypatch, '{"people":[],"places":[],"items":[],"occasions":[],"records":[]}')
+    LocalBackend(config).extract("saw Nafay", dt.datetime.now(dt.timezone.utc))
+    user_msg = fc.last["messages"][-1]["content"]
+    assert "Recent conversation" not in user_msg
+
+
 def test_local_acknowledge_returns_line(config, monkeypatch):
     _patch_chat(monkeypatch, "Logged your dinner with Nafay.")
     assert LocalBackend(config).acknowledge('event "dinner"; with Nafay') == "Logged your dinner with Nafay."

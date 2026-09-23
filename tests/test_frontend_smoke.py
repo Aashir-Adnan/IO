@@ -9,13 +9,14 @@ import pytest
 pytestmark = pytest.mark.ui
 
 
-def test_standby_renders_greeting_and_chips(ui_page):
+def test_standby_renders_greeting_and_agenda(ui_page):
     ui_page.open()
     ui_page.wait_for(".standby-greet")
     greet = ui_page.eval("document.querySelector('.standby-greet').textContent")
     assert "Aashir" in greet
-    chips = ui_page.eval("document.querySelectorAll('.chip').length")
-    assert chips == 2
+    ui_page.wait_for(".agenda-row")
+    rows = ui_page.eval("document.querySelectorAll('.agenda-row').length")
+    assert rows == 2
 
 
 def test_rail_switches_to_conversation_view(ui_page):

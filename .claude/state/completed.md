@@ -1,5 +1,97 @@
 # Completed (newest first)
 
+## 2026-09-22 — Home-screen widgets + pending-tasks window
+Spec `docs/superpowers/specs/2026-09-22-home-widgets-design.md`, plan
+`docs/superpowers/plans/2026-09-22-home-widgets.md`; knowledge
+`.claude/knowledge/home-widgets.md`. Snap-grid board (S/M/L, drag/resize/add/remove,
+per-device `widgets.json`) with four premade widgets (To-do, Weather via Open-Meteo,
+Time zones, Important = IO alerts + Gmail metadata), `/tasks /alerts /weather* /gmail*
+/widgets` endpoints, rules cases 9-10, and the small always-on-top tasks window
+(`#tasks`, `runner.open_tasks_window`). Verified: layout/tz math (node), endpoints on
+real Postgres, weather/Gmail parsers on canned data, one live Open-Meteo call, board +
+all widget states + edit mode (drag via synthetic events) + light/dark + the `#tasks`
+view in the browser pane. Suite: 677 pass / 14 skip. **Not verified:** the native window's always-on-top/position,
+real Gmail (needs the user's Google Cloud project with the Gmail API enabled).
+
+## 2026-09-22 — Memory sync via Google Drive (desktop side)
+Spec `docs/superpowers/specs/2026-09-21-memory-sync-design.md` (revised: Drive, not
+Supabase), plan `docs/superpowers/plans/2026-09-22-memory-sync.md`. Knowledge:
+`.claude/knowledge/memory-sync.md` (includes the one-time Google Cloud setup).
+Migration 0010 (`sync_id`/`synced_at`, tombstones, aliases, state), delete hook,
+codec, `SyncEngine` (push/pull/snapshot; LWW, sticky completion, tombstones,
+resolver-based duplicate collapse), `FolderStore` + `GoogleDriveStore`, OAuth
+(`sync/auth.py`, keychain), `SyncManager` + `/sync*` endpoints, Settings → Account
++ topbar dot. Verified: engine on 3 real databases through a real FolderStore;
+Drive store against a fake Drive client; UI states in the browser pane.
+**Not verified:** real Google sign-in and a real Drive round trip (needs the user's
+Google Cloud OAuth client; opt-in test `IO_GDRIVE_TESTS=1`), and a live
+two-machine sync. Deviation from spec: an exact `updated_at` tie is a no-op (no
+device-id tie-break). Suite: 626 pass / 14 skip. **Not built:** the phone client (E).
+
+## 2026-09-21 — Self-update from GitHub
+Spec `docs/superpowers/specs/2026-09-21-self-update-design.md`, plan
+`docs/superpowers/plans/2026-09-21-self-update.md`. See knowledge
+`desktop-app.md` "Self-update". Config layering (`config.local.toml`), git-based
+check, `/update` endpoints, `scripts/update.ps1`, topbar pill + Settings →
+Updates. Verified: real git repos in tests; `update.ps1` dry-run against a
+scratch clone (success + dirty-tree abort); UI states in the browser pane.
+Not verified: a real end-to-end apply from the running app (needs a remote
+that is ahead), and the exe-relaunch path. Suite: 569 pass / 13 skip.
+## 2026-09-21 — Ollama-optional + Claude-style live status
+Branch `io-window-glass`. Spec `docs/superpowers/specs/2026-09-21-ollama-optional-design.md`,
+plan `docs/superpowers/plans/2026-09-21-ollama-optional.md` (5 tasks).
+- **Embedder chain** (`backend/embed.py`): `[backend] embedder = auto|ollama|
+  builtin`; Ollama first (60 s backoff on failure), else `backend/embed_builtin.py`
+  (fastembed, same nomic v1.5, 768-d, ~520 MB one-time download into
+  `models_dir`), else lexical via `embed_or_none` at resolver/retrieve/writer/
+  caption/file-search. `backend/backfill.py:EmbeddingBackfiller` fills NULL
+  embeddings (started in `create_app` only when it owns its engine).
+- `dev.ps1`/`setup.ps1` skip Ollama for provider=anthropic; `io doctor` reports
+  the embedder; `io doctor --fetch-embedder`. `local-first.md` case 6.
+- **Verified live**: provider=anthropic, Ollama stopped: store + query via
+  `POST /utterance` on a scratch DB, embeddings filled by the built-in model.
+- **Not verified**: cosine(builtin, Ollama) > 0.98 (opt-in test; no Ollama here).
+- Suite: 539 pass / 13 skip. Deselected: `test_standby_panel` (pre-existing
+  pollution) and `test_records_browse_edit_delete` (calendar rot: hardcodes
+  "10th of september" = 2026, now rolls to 2027).
+- **Live status UI** (`frontend/progress.js`, `conversation.js`, `app.css`):
+  shimmer stage, collapsible steps, "Thought for Ns".
+
+## 2026-09-10/11 — Tasks & Collections
+Branch `io-window-glass`. Spec `docs/superpowers/specs/
+2026-09-10-tasks-and-collections-design.md`, plan `docs/superpowers/plans/
+2026-09-10-tasks-and-collections.md` (26 tasks, 5 phases, groups A-K). Full
+ledger with every deviation/review finding: `.superpowers/sdd/
+2026-09-10-tasks-and-collections/progress.md`. Closes the two gaps the spec
+named: tasks never closed themselves, and ad-hoc lists fragmented across
+differently-worded kinds.
+- **Phase 1 — completion**: `io_assistant/tasks/complete.py`
+  (`set_record_status` the sole status/`completed_at` writer; `close_record`
+  pure rapidfuzz match, no model). Orchestrator regex precheck +
+  `complete_record` capability (combined decide) both funnel into it;
+  ambiguous match gates on `PendingComplete`, resolved next turn in Python
+  (ordinal/fuzzy pick). Migration 0008 `records.completed_at`. Interactive
+  checkbox (`card.js`/`records.js` → `PATCH /record/{id}`).
+- **Phase 2 — default-today + roll-forward**: bare `task`/`chore` with no
+  date defaults to due-today (`resolve/dates.py::is_someday_phrase` opts a
+  task out); `query/compile.py` OR-clause keeps an overdue open record
+  in-window at read time (no daily job); `rank.py` overdue score bump;
+  `respond.py` adds `overdue`/`due_label` to every row.
+- **Phase 3 — collections registry**: migration 0009 `collections` table +
+  `io_assistant/collections/registry.py`. Extraction model proposes a list
+  descriptor once per novel kind; writer upserts + defaults checkable items
+  to `status="open"`.
+- **Phase 4 — collections-aware routing**: `routing_preamble` injected into
+  both the query planner and decide/plan contexts so a registered list's
+  slug is reused; `aggregation: "count"` compiled end-to-end.
+- **Phase 5 — surfaces**: `CollectionCard`, `GET /collections`,
+  records-browser filter chips, `io list` / `io list <name>` CLI.
+- New knowledge doc `.claude/knowledge/tasks-and-collections.md`;
+  `query-pipeline.md` / `data-model.md` updated. Deferred items consolidated
+  into `.claude/state/backlog.md` ("Tasks & Collections follow-ups").
+Full suite: **501 pass / 11 skip / 1 deselected** (the pre-existing
+`test_standby_panel` chip-data fail deselected, unrelated).
+
 ## 2026-09-08 — Phase 2B.1: full-featured bundle + UI shell polish
 Branch `io-ui-shell-polish`. Plan `…-io-phase-2b1-full-bundle.md`.
 **Bundle:** `io.spec` now bundles voice (piper/faster_whisper/sounddevice/

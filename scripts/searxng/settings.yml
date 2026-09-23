@@ -1,0 +1,38 @@
+# SearXNG config for IO's opt-in web-answers feature.
+# Local metasearch only — the query never leaves this machine. The one thing
+# IO needs that the stock image doesn't ship: JSON output (search.formats).
+
+use_default_settings: true
+
+general:
+  instance_name: "IO"
+  donation_url: false
+  contact_url: false
+
+server:
+  # Overridden by SEARXNG_BASE_URL in docker-compose.
+  base_url: "http://localhost:8888/"
+  # A fixed local secret is fine: this instance is bound to localhost and
+  # holds nothing sensitive. Change it if you expose the port.
+  secret_key: "io-local-searxng-not-a-secret"
+  limiter: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  # IO parses the JSON response (infoboxes / answers / results).
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+
+ui:
+  static_use_hash: true
+
+# Keep it light: general web + news is all IO queries.
+engines:
+  - name: wikidata
+    disabled: false
+  - name: wikipedia
+    disabled: false

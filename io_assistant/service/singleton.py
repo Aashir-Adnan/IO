@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sys
-import webbrowser
 from pathlib import Path
 
 from io_assistant.config import Config
@@ -75,15 +74,20 @@ def acquire_single_instance(name: str = "io-assistant") -> SingleInstance | None
 
 
 def surface_running_instance(config: Config) -> None:
+    """A second launch: ask the running instance to bring its window forward.
+    IO is a desktop app — we never fall back to a browser."""
     import httpx
 
     base = f"http://{config.service.host}:{config.service.port}"
     try:
-        ok = bool(httpx.get(f"{base}/health", timeout=2).json().get("ok"))
+        r = httpx.post(f"{base}/window/raise", timeout=3)
     except Exception:
-        ok = False
-    if ok:
-        webbrowser.open(f"{base}/app/")
-        print("IO is already running — opened it in your browser.")
-    else:
         print("IO seems to be starting already.")
+        return
+    if r.status_code == 200:
+        print("IO is already running — brought its window to the front.")
+    elif r.status_code == 404:
+        print("IO's service is running headlessly (no window in that process). "
+              "Run `io run` to open the window.")
+    else:
+        print("IO is already running.")

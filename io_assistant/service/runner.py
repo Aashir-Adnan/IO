@@ -15,7 +15,92 @@ from io_assistant.service.app import create_app
 
 load_env_once()
 
-__all__ = ["run_service", "open_window", "error_dialog"]
+__all__ = ["run_service", "open_window", "error_dialog", "raise_window"]
+
+# The live pywebview window in THIS process (None in a headless `io serve`).
+# Set by open_window; read by the /window/raise endpoint so a second launch
+# focuses the existing window instead of opening a browser.
+_WINDOW = None
+
+
+# The small always-on-top pending-tasks window (None until opened / after close).
+_TASKS_WINDOW = None
+_TASKS_SIZE = (340, 520)
+
+
+class TasksApi:
+    """js_api of the tasks window: just a close button (the window is frameless)."""
+
+    def close(self):
+        w = _TASKS_WINDOW
+        if w is not None:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+
+
+def open_tasks_window(app_url: str) -> bool:
+    """Open the compact pending-tasks window, or focus it if it is already open.
+    Frameless, always on top, bottom-right of the screen, and - like every IO
+    window - not draggable. Route `#tasks` renders only the task list."""
+    global _TASKS_WINDOW
+    import webview
+
+    if _TASKS_WINDOW is not None:
+        try:
+            _TASKS_WINDOW.restore()
+            _TASKS_WINDOW.show()
+            return True
+        except Exception:
+            _TASKS_WINDOW = None
+    w, h = _TASKS_SIZE
+    x = y = None
+    try:
+        scr = webview.screens[0]
+        x, y = scr.width - w - 24, scr.height - h - 72      # 72: room for the taskbar
+    except Exception:
+        pass
+    win = webview.create_window(
+        "IO tasks", app_url.split("#")[0] + "#tasks", width=w, height=h, x=x, y=y,
+        on_top=True, frameless=True, resizable=False, easy_drag=False,
+        background_color="#12131b", js_api=TasksApi(),
+    )
+
+    def _closed():
+        global _TASKS_WINDOW
+        _TASKS_WINDOW = None
+
+    try:
+        win.events.closed += _closed
+    except Exception:
+        pass
+    _TASKS_WINDOW = win
+    return True
+
+
+def raise_window() -> bool:
+    """Bring the desktop window to the foreground. False if this process has
+    no window (headless service)."""
+    w = _WINDOW
+    if w is None:
+        return False
+    try:
+        w.restore()
+    except Exception:
+        pass
+    if os.name == "nt":  # pragma: no cover - Windows GUI
+        try:
+            import ctypes
+
+            hwnd = int(getattr(getattr(w, "native", None), "Handle", 0) or 0)
+            if hwnd:
+                user32 = ctypes.windll.user32
+                user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+    return True
 
 
 def error_dialog(message: str) -> None:
@@ -95,9 +180,11 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         import webview
     except Exception as e:  # pragma: no cover - platform dependent
         raise RuntimeError(
-            "pywebview is not available. Run `io serve` and open "
-            f"{url} in a browser instead."
+            "pywebview is not available — the IO desktop window can't open. "
+            "Install it with `uv sync` (or `pip install pywebview`)."
         ) from e
+
+    state = {"acrylic": False}
 
     class _Api:
         def pick_folder(self):
@@ -126,6 +213,22 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
                 window.toggle_fullscreen()
             except Exception:
                 pass
+            return self.is_fullscreen()
+
+        def is_fullscreen(self):
+            try:
+                return bool(getattr(window, "fullscreen", False))
+            except Exception:
+                return False
+
+        def effects(self):
+            return dict(state)
+
+        def open_tasks(self):
+            try:
+                return open_tasks_window(url)
+            except Exception:
+                return False
 
     geo = _load_geometry()
     kw = dict(
@@ -133,43 +236,46 @@ def open_window(url: str, *, title: str = "IO", fullscreen: bool = True) -> None
         x=geo.get("x"), y=geo.get("y"),
         min_size=(960, 640),
         fullscreen=fullscreen and not geo,
-        frameless=True, easy_drag=True,
-        background_color="#0E0F17",
+        frameless=True, easy_drag=False,   # drag only via the topbar's app-region
         text_select=True,
         js_api=_Api(),
     )
     try:
         window = webview.create_window(title, url, transparent=True, **kw)
     except Exception:
-        window = webview.create_window(title, url, **kw)
+        window = webview.create_window(
+            title, url, background_color="#0E0F17", **kw)
 
-    def _menu():  # pragma: no cover - GUI
+    def _apply_backdrop():  # pragma: no cover - Windows GUI
+        """Win11 acrylic behind the (transparent) webview."""
+        if os.name != "nt":
+            return
         try:
-            from webview.menu import Menu, MenuAction
+            import ctypes
 
-            def _new_conv():
-                try:
-                    httpx.post(url.replace("/app/", "/conversation"), timeout=3)
-                except Exception:
-                    pass
-                window.load_url(url)
-
-            return [
-                Menu("File", [
-                    MenuAction("New Conversation", _new_conv),
-                    MenuAction("Quit", window.destroy),
-                ]),
-                Menu("View", [
-                    MenuAction("Reload", lambda: window.load_url(url)),
-                    MenuAction("Toggle Fullscreen", window.toggle_fullscreen),
-                    MenuAction("Minimize", window.minimize),
-                ]),
-            ]
+            native = getattr(window, "native", None)
+            hwnd = int(getattr(native, "Handle", 0) or 0)
+            if not hwnd:
+                return
+            dwm = ctypes.windll.dwmapi
+            dark = ctypes.c_int(1)
+            dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), 4)  # dark mode
+            backdrop = ctypes.c_int(3)  # DWMSBT_TRANSIENTWINDOW (acrylic)
+            r = dwm.DwmSetWindowAttribute(
+                hwnd, 38, ctypes.byref(backdrop), 4)  # DWMWA_SYSTEMBACKDROP_TYPE
+            state["acrylic"] = (r == 0)
         except Exception:
-            return []
+            pass
 
-    window.events.closing += lambda: _save_geometry(window)
-    try:
-        webview.start(menu=_menu())
-    except TypeError:  # older pywebview without menu kwarg
-        webview.start()
+    global _WINDOW
+    _WINDOW = window
+
+    def _on_closing():
+        global _WINDOW
+        _save_geometry(window)
+        _WINDOW = None
+
+    window.events.shown += _apply_backdrop
+    window.events.closing += _on_closing
+    webview.start()
+    _WINDOW = None

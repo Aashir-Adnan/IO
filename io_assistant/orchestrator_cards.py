@@ -5,6 +5,7 @@ from sqlalchemy import select
 from io_assistant.db import models as m
 from io_assistant.models_domain import (
     Card,
+    CollectionCard,
     EntityRef,
     RecordCard,
     SourcesCard,
@@ -57,9 +58,26 @@ def query_cards(session, answer) -> list[Card]:
             labels=["memory"],
         ))
     lr = getattr(answer, "list_records", [])
-    if lr and all(r.kind in ("task", "chore") or r.due is not None for r in lr):
+    slugs = {r.kind for r in lr}
+    if lr and len(slugs) == 1:
+        c = session.execute(
+            select(m.Collection).where(m.Collection.kind_slug == next(iter(slugs)))
+        ).scalars().first()
+        if c is not None:
+            cards.append(CollectionCard(
+                name=c.name, item_noun=c.item_noun, kind_slug=c.kind_slug,
+                checkable=bool((c.field_hint or {}).get("checkable")),
+                items=[TaskListItem(record_id=r.record_id, title=r.title,
+                                    status=r.status, due=r.due) for r in lr],
+            ))
+            return cards   # collection card replaces the tasklist card
+    statusful = [
+        r for r in lr
+        if r.status in ("open", "done", "dropped") or r.due is not None
+    ]
+    if statusful and len(statusful) >= max(1, len(lr) // 2):
         cards.append(TaskListCard(items=[
             TaskListItem(record_id=r.record_id, title=r.title, status=r.status, due=r.due)
-            for r in lr
+            for r in statusful
         ]))
     return cards

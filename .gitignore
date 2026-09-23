@@ -11,6 +11,9 @@ __pycache__/
 # Env / secrets
 .env
 
+# per-machine config overrides (see io_assistant/updates)
+/config.local.toml
+
 # dev.ps1 runtime state (service pid + logs)
 /.io-dev/
 

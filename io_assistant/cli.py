@@ -145,13 +145,99 @@ def listen(passive: bool = typer.Option(None, help="hands-free VAD mode")) -> No
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    fetch_embedder: bool = typer.Option(
+        False, "--fetch-embedder",
+        help="Download the built-in embedder model now (no Ollama needed)."),
+) -> None:
     """Check the local stack (Postgres, pgvector, models, Whisper, Piper)."""
-    from io_assistant.doctor import format_report, run_checks
+    from io_assistant import doctor as d
 
-    checks = run_checks(load_config())
-    print(format_report(checks))
+    config = load_config()
+    if fetch_embedder:
+        print(d.fetch_embedder(config))
+    checks = d.run_checks(config)
+    print(d.format_report(checks))
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
+
+
+@app.command()
+def update(
+    check_: bool = typer.Option(False, "--check", help="Fetch and report whether an update is available."),
+    localize: bool = typer.Option(False, "--localize", help="Move your config.toml edits into config.local.toml."),
+) -> None:
+    """Check the git remote for a newer IO (the app applies it from Settings → Updates)."""
+    from io_assistant.updates import check as ck
+    from io_assistant.updates import localize as lz
+
+    config = load_config()
+    repo = ck.find_repo(config)
+    if repo is None:
+        print("No git checkout found (set [updates] repo_dir).")
+        raise typer.Exit(1)
+    if localize:
+        moved = lz.split_local(repo)
+        print("Moved your settings into config.local.toml." if moved
+              else "Nothing to move.")
+        return
+    s = ck.check(repo, config.updates.remote, config.updates.branch)
+    if s.error:
+        print(f"Couldn't check for updates: {s.error}")
+        raise typer.Exit(1)
+    if not s.available:
+        print(f"IO is up to date ({s.branch} @ {s.sha}).")
+        return
+    print(f"{s.behind} new commit(s) on {s.branch}:")
+    for subj in s.subjects:
+        print(f"  - {subj}")
+
+
+@app.command("list")
+def list_(name: str = typer.Argument(None)) -> None:
+    """List your tracked lists, or the items in one."""
+    config = load_config()
+    engine = make_engine(config.database_url)
+    factory = make_session_factory(engine)
+    try:
+        with factory() as s:
+            if name is None:
+                from sqlalchemy import func, select
+
+                from io_assistant.db import models as m
+                rows = s.execute(
+                    select(m.Collection).order_by(m.Collection.created_at)
+                ).scalars().all()
+                if not rows:
+                    typer.echo("No lists yet.")
+                for c in rows:
+                    base = select(func.count()).select_from(m.Record).where(
+                        m.Record.kind == c.kind_slug
+                    )
+                    open_count = s.execute(base.where(m.Record.status == "open")).scalar_one()
+                    done_count = s.execute(base.where(m.Record.status == "done")).scalar_one()
+                    noun = f" — {c.item_noun}" if c.item_noun else ""
+                    typer.echo(f"{c.kind_slug}{noun} ({open_count} open, {done_count} done)")
+            else:
+                from io_assistant.collections.registry import resolve_collection
+                c = resolve_collection(s, name)
+                if c is None:
+                    typer.echo(f"No list matching '{name}'.")
+                    raise typer.Exit(1)
+                from sqlalchemy import select
+
+                from io_assistant.db import models as m
+                rows = s.execute(
+                    select(m.Record)
+                    .where(m.Record.kind == c.kind_slug)
+                    .order_by((m.Record.status == "done").asc(), m.Record.title)
+                ).scalars().all()
+                if not rows:
+                    typer.echo(f"Nothing in {c.name} yet.")
+                for r in rows:
+                    mark = "x" if r.status == "done" else " "
+                    typer.echo(f"[{mark}] {r.title}")
+    finally:
+        engine.dispose()
 
 
 files_app = typer.Typer(help="register and search local files")

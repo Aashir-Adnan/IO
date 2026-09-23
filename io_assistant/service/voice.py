@@ -21,6 +21,7 @@ class VoiceModels:
         self._config = config
         self._transcriber = None
         self._speaker = None
+        self._streamer = None
 
     def transcriber(self):
         if self._transcriber is None:
@@ -31,6 +32,17 @@ class VoiceModels:
             except Exception as e:  # noqa: BLE001
                 raise VoiceUnavailable(f"speech-to-text unavailable: {e}") from e
         return self._transcriber
+
+    def streamer(self):
+        """The local real-time transcriber (voice.stt_provider == 'whisper-stream')."""
+        if self._streamer is None:
+            try:
+                from io_assistant.transcribe.streaming import StreamingWhisper
+
+                self._streamer = StreamingWhisper(self._config)
+            except Exception as e:  # noqa: BLE001
+                raise VoiceUnavailable(f"streaming speech-to-text unavailable: {e}") from e
+        return self._streamer
 
     def _ensure_voice_model(self) -> None:
         """Download the configured Piper voice on first use if it's missing."""
