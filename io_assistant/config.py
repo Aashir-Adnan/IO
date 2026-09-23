@@ -42,6 +42,11 @@ class ServiceConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
     frontend_dir: str | None = None
+    # "" (default): unchanged, loopback-only, no auth. Set both this AND host
+    # to a reachable interface (e.g. your Tailscale IP) to let another of your
+    # own devices — the phone app — call this service. See
+    # rules/local-first.md case 11.
+    remote_token: str = ""
 
 class VoiceConfig(BaseModel):
     tts_voice: str = "en_US-hfc_female-medium"

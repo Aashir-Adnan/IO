@@ -67,6 +67,16 @@ non-local host — is a bug.
     Drive sync grant, so neither consent widens the other. The service calls
     Google; sender + subject go to the local UI only. Disconnect clears the token.
 
+11. **The phone app, over the user's own network** — `[service] remote_token`
+    (empty by default; no change to anything when unset). When set, every route
+    but `/health` requires `Authorization: Bearer <token>`, checked once in
+    middleware before any route runs. The user also points `[service] host` at
+    a reachable interface themselves (e.g. their Tailscale IP) — nothing here
+    changes that default either. What this opens is reachability from the
+    user's *own* second device, on a private network they control (Tailscale
+    or equivalent), auth-gated — not a third party, and not the public
+    internet. See `docs/superpowers/specs/2026-09-23-phone-app-design.md`.
+
 `web.enabled = false` (the default) ⇒ the `web` action is not registered, the
 routing pre-check is skipped, and general-knowledge questions stay `unknown`
 exactly as before — no web tables are touched, no sockets opened.

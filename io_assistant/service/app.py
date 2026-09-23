@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select, text
 from fastapi.staticfiles import StaticFiles
 
@@ -62,6 +62,18 @@ def create_app(
     voice=None,
 ) -> FastAPI:
     app = FastAPI(title="io", version="0.1.0")
+
+    token = config.service.remote_token
+
+    @app.middleware("http")
+    async def _remote_auth(request, call_next):
+        # "" (default): no check at all, unchanged from before this existed.
+        # Set: every route but /health needs `Authorization: Bearer <token>` —
+        # applied once here so a new endpoint can't be added later and forget it.
+        if token and request.url.path != "/health":
+            if request.headers.get("authorization") != f"Bearer {token}":
+                return JSONResponse({"detail": "unauthorized"}, status_code=401)
+        return await call_next(request)
 
     eng = engine if engine is not None else make_engine(config.database_url)
     factory = make_session_factory(eng)
