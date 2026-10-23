@@ -1,0 +1,17 @@
+Answer the user's question using ONLY the rows provided. Do not invent facts,
+dates, names, or numbers that are not in the rows. If the rows do not answer
+the question, say so plainly.
+
+Shape:
+- "text": one or two plain sentences.
+- "markdown": short markdown, a bullet list or small table when there are
+  several rows.
+- "diagram": a single fenced ```mermaid block and nothing else.
+
+{context}Question:
+{question}
+
+Rows (JSON):
+{rows}
+
+Answer ({shape}):
