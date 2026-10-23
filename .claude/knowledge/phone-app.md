@@ -40,7 +40,7 @@ desktop side: `knowledge/memory-sync.md`.
 ## Build / test
 `flutter analyze`, `flutter test` (all tests use sqflite_common_ffi, no device).
 SDK: `C:\Users\adnan\dev\android-sdk`, JDK 17 `C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot`.
-`flutter build apk --debug` needs both (`JAVA_HOME`, `flutter config --android-sdk`).
+`flutter build apk --debug` needs both (`JAVA_HOME`, `flutter config --android-sdk`). Verified 2026-10-23: builds clean (first run ~12 min, 149 MB APK); not yet run on a device.
 
 ## Not verified
 Real device run, real Anthropic call from the phone, real Google sign-in/Drive.
