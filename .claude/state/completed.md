@@ -1,5 +1,14 @@
 # Completed (newest first)
 
+## 2026-10-23 — Phone app: chat loop, sync, Drive, web answers
+Branch `phone-app` (PR #2). Chat loop (Anthropic decide/plan/phrase/ack,
+orchestrator with pending-gate replay), tasks screen, Dart sync engine
+(Python-compatible, fixture-proven both directions), Drive store + Google
+sign-in + SyncManager + poke-after-write, Settings (Account & sync, Home
+server), web answers through the user's desktop (`webIntent` precheck +
+explicit asks, memory first). 235 Dart tests pass; analyze clean.
+Not verified on a device / with real Google or Anthropic calls.
+
 ## 2026-09-23 — Phone app: onboarding + local core ports (Flutter/Dart)
 Branch `phone-app` (draft PR #2, targets `io-window-glass`). Spec
 `docs/superpowers/specs/2026-09-23-phone-app-design.md`, plans

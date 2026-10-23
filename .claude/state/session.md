@@ -1,5 +1,14 @@
 # Current session
 
+## 2026-10-23 — phone app: chat loop, sync, Drive, web answers done (branch `phone-app`)
+
+- Phone now has: chat loop, tasks, sync engine + Drive store + Google sign-in +
+  SyncManager, Settings (key / Account & sync / Home server), web answers via the
+  desktop (`lib/core/web.dart`). 235 Dart tests, analyze clean. Read
+  `knowledge/phone-app.md`.
+- Next: first Android build (`flutter build apk --debug`, was running), then real
+  device checks, then backlog items.
+
 ## 2026-09-21 — status UI shipped; A / D / F specs written (branch `io-window-glass`)
 
 - **S — Claude-style live status: DONE, uncommitted.** `frontend/progress.js`
