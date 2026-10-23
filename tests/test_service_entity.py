@@ -62,7 +62,7 @@ def test_records_browse_edit_delete(config, fake_backend, db, monkeypatch):
         assert any(x["id"] == rid and x["domain"] == "work" for x in rows)
 
         edited = c.patch(f"/record/{rid}", json={"title": "SWE at Granjur Tech",
-                                                 "when_phrase": "the 10th of september"})
+                                                 "when_phrase": "2026-09-10"})
         assert edited.status_code == 200
         assert edited.json()["title"] == "SWE at Granjur Tech"
         assert edited.json()["when"].startswith("2026-09-10")

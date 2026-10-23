@@ -1,0 +1,20 @@
+Return a JSON object with EXACTLY these keys, each an array (use [] when empty):
+people: [{"name": str, "aliases": [str], "confidence": 0..1}]
+places: [{"name": str, "aliases": [str], "confidence": 0..1}]
+items:  [{"name": str, "aliases": [str], "confidence": 0..1}]
+occasions: [{"name": str, "date_phrase": str|null, "confidence": 0..1}]
+records: [{"kind": str, "domain": str|null, "title": str, "body": str|null,
+           "when_phrase": str|null, "due_phrase": str|null, "recurrence_phrase": str|null,
+           "status": "open"|"done"|"dropped"|null, "assigned_by": str|null,
+           "people": [str], "places": [str], "items": [str], "occasions": [str],
+           "attributes": {}, "confidence": 0..1,
+           "collection": {"name": str, "item_noun": str, "synonyms": [str], "checkable": bool} | null}]
+kind: "event" (it happened), "task" (one-off to-do), "chore" (recurring to-do),
+      or a short coined slug like "gym_session" / "job_meeting" / "expense".
+domain: one of social, job, home, health, finance, learning, errand, other.
+collection: set ONLY when this record is an item the user is adding to a
+      personal list that is not event/task/chore (movies/shows to watch, books
+      to read, gift ideas, restaurants to try). Use the SAME kind slug you would
+      use to ask for the whole list. "checkable": true if items get watched /
+      read / done. Fill it on the first item; you may omit it on later items.
+Do NOT resolve dates - copy the raw phrase into *_phrase fields.
