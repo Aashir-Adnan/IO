@@ -6,7 +6,8 @@ import 'tasks_state.dart';
 class TasksController extends ChangeNotifier implements TasksState {
   final Database db;
   final DateTime Function() _clock;
-  TasksController(this.db, {DateTime Function()? clock})
+  final VoidCallback? onChanged; // a completion is a write: sync pokes here
+  TasksController(this.db, {DateTime Function()? clock, this.onChanged})
       : _clock = clock ?? (() => DateTime.now().toUtc());
 
   @override
@@ -22,5 +23,6 @@ class TasksController extends ChangeNotifier implements TasksState {
   Future<void> complete(int id) async {
     await completeTask(db, id, _clock());
     await load();
+    onChanged?.call();
   }
 }

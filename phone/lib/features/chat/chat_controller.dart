@@ -8,7 +8,10 @@ import 'chat_state.dart';
 class ChatController extends ChangeNotifier implements ChatState {
   final ChatStore store;
   final Orchestrator orchestrator;
-  ChatController(this.store, this.orchestrator);
+
+  /// Called after a turn finishes (it may have written memories) — sync pokes here.
+  final VoidCallback? onTurnDone;
+  ChatController(this.store, this.orchestrator, {this.onTurnDone});
 
   @override
   List<ChatMessage> messages = [];
@@ -41,6 +44,7 @@ class ChatController extends ChangeNotifier implements ChatState {
       busy = false;
       messages = await store.messages(id);
       notifyListeners();
+      onTurnDone?.call();
     }
   }
 

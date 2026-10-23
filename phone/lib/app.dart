@@ -7,6 +7,7 @@ import 'features/onboarding/api_key_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/tasks/tasks_screen.dart';
 import 'features/tasks/tasks_state.dart';
+import 'sync/sync_manager.dart';
 
 /// Everything the screens need, built once at startup (see bootstrap.dart);
 /// tests hand in fakes.
@@ -15,10 +16,11 @@ class AppServices {
   final AnthropicClient client;
   final ChatState chat;
   final TasksState tasks;
+  final SyncState sync;
   final Future<void> Function() dispose;
   AppServices({
     required this.secureStore, required this.client, required this.chat,
-    required this.tasks, required this.dispose,
+    required this.tasks, required this.sync, required this.dispose,
   });
 
   Future<bool> hasKey() async => (await secureStore.getApiKey())?.isNotEmpty ?? false;
@@ -108,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(index: _tab, children: [
         ChatScreen(state: s.chat),
         TasksScreen(state: s.tasks),
-        SettingsScreen(store: s.secureStore, onKeyRemoved: widget.onKeyRemoved),
+        SettingsScreen(store: s.secureStore, sync: s.sync, onKeyRemoved: widget.onKeyRemoved),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,

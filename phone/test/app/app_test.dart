@@ -7,7 +7,9 @@ import 'package:io_phone/core/anthropic_client.dart';
 import 'package:io_phone/core/chat_store.dart';
 import 'package:io_phone/core/secure_store.dart';
 import 'package:io_phone/features/chat/chat_state.dart';
+import 'package:io_phone/features/settings/sync_message.dart';
 import 'package:io_phone/features/tasks/tasks_state.dart';
+import 'package:io_phone/sync/sync_manager.dart';
 
 class FakeKv implements KeyValueStore {
   final data = <String, String>{};
@@ -40,6 +42,18 @@ class FakeTasks extends ChangeNotifier implements TasksState {
   Future<void> complete(int id) async {}
 }
 
+class FakeSync extends ChangeNotifier implements SyncState {
+  @override
+  SyncInfo get info => const SyncInfo(
+      configured: true, signedIn: false, syncing: false, signingIn: false);
+  @override
+  Future<void> signIn() async {}
+  @override
+  Future<void> signOut() async {}
+  @override
+  Future<void> syncNow() async {}
+}
+
 AppServices services({String? key, int validateStatus = 200, FakeTasks? tasks}) {
   final kv = FakeKv();
   if (key != null) kv.data['anthropic_api_key'] = key;
@@ -48,6 +62,7 @@ AppServices services({String? key, int validateStatus = 200, FakeTasks? tasks}) 
     client: AnthropicClient(http: MockClient((r) async => http.Response('{}', validateStatus))),
     chat: FakeChat(),
     tasks: tasks ?? FakeTasks(),
+    sync: FakeSync(),
     dispose: () async {},
   );
 }
