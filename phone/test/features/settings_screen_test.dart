@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:io_phone/core/home_server.dart';
 import 'package:io_phone/core/secure_store.dart';
 import 'package:io_phone/features/settings/settings_screen.dart';
 import 'package:io_phone/features/settings/sync_message.dart';
@@ -10,6 +11,16 @@ class FakeKv implements KeyValueStore {
   Future<void> write({required String key, required String? value}) async {}
   @override
   Future<String?> read({required String key}) async => null;
+}
+
+class MemKv implements KeyValueStore {
+  final data = <String, String>{};
+  @override
+  Future<void> write({required String key, required String? value}) async {
+    if (value == null) { data.remove(key); } else { data[key] = value; }
+  }
+  @override
+  Future<String?> read({required String key}) async => data[key];
 }
 
 class FakeSync extends ChangeNotifier implements SyncState {
@@ -80,5 +91,34 @@ void main() {
     s.notifyListeners();
     await tester.pump();
     expect(find.text('Synced just now'), findsOneWidget);
+  });
+
+  group('home server', () {
+    testWidgets('hidden unless wired', (tester) async {
+      await tester.pumpWidget(host(FakeSync(state())));
+      expect(find.text('Home server (optional)'), findsNothing);
+    });
+
+    testWidgets('saves a bare address as http://, tests it, and clears', (tester) async {
+      final home = HomeServerStore(MemKv());
+      await tester.pumpWidget(MaterialApp(
+          home: SettingsScreen(
+              store: SecureStore(FakeKv()), sync: FakeSync(state()), onKeyRemoved: () {},
+              home: home, homeCheck: () async => 'Connected to your desktop.')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('home-url')));
+      await tester.enterText(find.byKey(const Key('home-url')), '100.64.0.2:8765');
+      await tester.enterText(find.byKey(const Key('home-token')), 'tok');
+      await tester.ensureVisible(find.byKey(const Key('home-test')));
+      await tester.tap(find.byKey(const Key('home-test')));
+      await tester.pumpAndSettle();
+      expect(find.text('Connected to your desktop.'), findsOneWidget);
+      final h = (await home.load())!;
+      expect((h.baseUrl, h.token), ('http://100.64.0.2:8765', 'tok'));
+      await tester.ensureVisible(find.byKey(const Key('home-clear')));
+      await tester.tap(find.byKey(const Key('home-clear')));
+      await tester.pumpAndSettle();
+      expect(await home.load(), isNull);
+    });
   });
 }

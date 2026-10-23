@@ -3,6 +3,8 @@ import 'app.dart';
 import 'core/anthropic_client.dart';
 import 'core/chat_store.dart';
 import 'core/db.dart';
+import 'core/home_server.dart';
+import 'core/web.dart';
 import 'core/llm.dart';
 import 'core/orchestrator.dart';
 import 'core/secure_store.dart';
@@ -25,13 +27,17 @@ Future<AppServices> bootstrapServices() async {
     db: db, auth: auth, configured: auth.configured,
     storeFactory: () => GoogleDriveStore(http.Client(), auth.accessToken),
   );
-  final chat = ChatController(ChatStore(db), Orchestrator(db, llm), onTurnDone: sync.poke);
+  final home = HomeServerStore();
+  final web = HomeWebClient(http.Client(), home.load);
+  final chat = ChatController(ChatStore(db), Orchestrator(db, llm, web: web),
+      onTurnDone: sync.poke);
   final tasks = TasksController(db, onChanged: sync.poke);
   await chat.load();
   await sync.refresh();
   sync.start();
   return AppServices(
     secureStore: secure, client: client, chat: chat, tasks: tasks, sync: sync,
+    home: home, homeCheck: web.check,
     dispose: () async {
       sync.dispose();
       await db.close();

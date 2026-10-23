@@ -14,6 +14,7 @@ import 'persist.dart';
 import 'plan.dart';
 import 'query.dart';
 import 'resolver.dart';
+import 'web.dart';
 
 class TurnResult {
   /// "ack" | "answer" | "gate" | "unknown" | "error"
@@ -42,9 +43,11 @@ class Orchestrator {
   final Llm llm;
   final DateTime Function() clock;
   final double confidenceGate;
+  final WebClient? web; // the user's own desktop, optional (see web.dart)
   _Pending? _pending;
 
-  Orchestrator(this.db, this.llm, {DateTime Function()? clock, this.confidenceGate = 0.6})
+  Orchestrator(this.db, this.llm,
+      {DateTime Function()? clock, this.confidenceGate = 0.6, this.web})
       : clock = clock ?? (() => DateTime.now().toUtc());
 
   Future<TurnResult> handle(String text, {String? context}) async {
@@ -55,6 +58,8 @@ class Orchestrator {
         return await _replay(pending, context);
       }
       final now = clock();
+      final webTurn = await _maybeWeb(text, now);
+      if (webTurn != null) return webTurn;
       final plan = await llm.decide(text, now, context: context);
       final results = <TurnResult>[];
       for (final step in plan.steps) {
@@ -69,6 +74,30 @@ class Orchestrator {
       return const TurnResult('error', "I couldn't understand the model's reply — try again.");
     } on PersistError catch (e) {
       return TurnResult('error', "I couldn't save that: ${e.message}");
+    }
+  }
+
+  /// Memory first: the web is only for clearly non-personal news/fact
+  /// questions or an explicit "search the web for…". Null = not a web turn.
+  Future<TurnResult?> _maybeWeb(String text, DateTime now) async {
+    final w = web;
+    final intent = webIntent(text);
+    if (w == null || intent == null) return null;
+    if (!await w.isConfigured()) {
+      return intent.explicit
+          ? const TurnResult('error',
+              'Web search runs through your desktop. Set your home server in Settings first.')
+          : null;
+    }
+    final nowIso = now.toIso8601String();
+    await db.insert('utterances', {
+      'text': text, 'source': 'text', 'captured_at': nowIso,
+      'resolved_intent': 'web', 'sync_id': newSyncId(), 'updated_at': nowIso,
+    });
+    try {
+      return TurnResult('answer', (await w.answer(intent.query, intent.kind)).render());
+    } on WebUnavailable catch (e) {
+      return TurnResult('error', e.message);
     }
   }
 
@@ -169,7 +198,12 @@ class Orchestrator {
     }
     final rows = byId.values.take(_topN).toList();
 
-    if (count == null && rows.isEmpty) return const TurnResult('answer', _empty);
+    if (count == null && rows.isEmpty) {
+      final hint = (await web?.isConfigured() ?? false)
+          ? '$_empty If you meant the wider world, say "search the web for …".'
+          : _empty;
+      return TurnResult('answer', hint);
+    }
     final q = count == null ? question : '$question (there are $count matching items)';
     final text0 = await llm.phrase(q, rowsToJson(rows, now), qp.answerShape, context: context);
     return TurnResult('answer', text0,

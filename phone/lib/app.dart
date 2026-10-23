@@ -6,6 +6,7 @@ import 'features/chat/chat_state.dart';
 import 'features/onboarding/api_key_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/tasks/tasks_screen.dart';
+import 'core/home_server.dart';
 import 'features/tasks/tasks_state.dart';
 import 'sync/sync_manager.dart';
 
@@ -17,10 +18,13 @@ class AppServices {
   final ChatState chat;
   final TasksState tasks;
   final SyncState sync;
+  final HomeServerStore? home;
+  final Future<String> Function()? homeCheck;
   final Future<void> Function() dispose;
   AppServices({
     required this.secureStore, required this.client, required this.chat,
     required this.tasks, required this.sync, required this.dispose,
+    this.home, this.homeCheck,
   });
 
   Future<bool> hasKey() async => (await secureStore.getApiKey())?.isNotEmpty ?? false;
@@ -110,7 +114,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(index: _tab, children: [
         ChatScreen(state: s.chat),
         TasksScreen(state: s.tasks),
-        SettingsScreen(store: s.secureStore, sync: s.sync, onKeyRemoved: widget.onKeyRemoved),
+        SettingsScreen(store: s.secureStore, sync: s.sync, home: s.home,
+            homeCheck: s.homeCheck, onKeyRemoved: widget.onKeyRemoved),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,

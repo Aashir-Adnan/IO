@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/home_server.dart';
 import '../../core/secure_store.dart';
 import '../../sync/sync_manager.dart';
 import 'sync_message.dart';
@@ -7,8 +8,13 @@ class SettingsScreen extends StatelessWidget {
   final SecureStore store;
   final SyncState sync;
   final VoidCallback onKeyRemoved;
+
+  /// The optional desktop that answers web questions; hidden when null.
+  final HomeServerStore? home;
+  final Future<String> Function()? homeCheck;
   const SettingsScreen(
-      {super.key, required this.store, required this.sync, required this.onKeyRemoved});
+      {super.key, required this.store, required this.sync, required this.onKeyRemoved,
+      this.home, this.homeCheck});
 
   Future<void> _remove(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -48,6 +54,10 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           _SyncSection(sync: sync),
           const Divider(),
+          if (home != null) ...[
+            _HomeSection(home: home!, check: homeCheck),
+            const Divider(),
+          ],
           const ListTile(
             leading: Icon(Icons.phone_android),
             title: Text('Your memories live on this device'),
@@ -112,6 +122,100 @@ class _SyncSection extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _HomeSection extends StatefulWidget {
+  final HomeServerStore home;
+  final Future<String> Function()? check;
+  const _HomeSection({required this.home, this.check});
+  @override
+  State<_HomeSection> createState() => _HomeSectionState();
+}
+
+class _HomeSectionState extends State<_HomeSection> {
+  final _url = TextEditingController();
+  final _token = TextEditingController();
+  String? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.home.load().then((h) {
+      if (!mounted || h == null) return;
+      _url.text = h.baseUrl;
+      _token.text = h.token;
+    });
+  }
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _token.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await widget.home.save(HomeServer(_url.text, _token.text));
+    final h = await widget.home.load();
+    if (!mounted) return;
+    setState(() {
+      _url.text = h?.baseUrl ?? '';
+      _status = h == null ? 'Cleared.' : 'Saved.';
+    });
+  }
+
+  Future<void> _clear() async {
+    await widget.home.clear();
+    if (!mounted) return;
+    setState(() {
+      _url.clear();
+      _token.clear();
+      _status = 'Cleared.';
+    });
+  }
+
+  Future<void> _test() async {
+    await _save();
+    if (!mounted) return;
+    setState(() => _status = 'Testing...');
+    final r = await (widget.check?.call() ?? Future.value('Not available.'));
+    if (mounted) setState(() => _status = r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Home server (optional)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text('Your own desktop IO, over Tailscale. Used only for news and facts '
+              'about the outside world, or when you say "search the web for ...".'),
+          const SizedBox(height: 8),
+          TextField(
+              key: const Key('home-url'),
+              controller: _url,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(labelText: 'Address, e.g. 100.64.0.2:8765')),
+          TextField(
+              key: const Key('home-token'),
+              controller: _token,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Token (service.remote_token)')),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, children: [
+            FilledButton(key: const Key('home-save'), onPressed: _save, child: const Text('Save')),
+            TextButton(key: const Key('home-test'), onPressed: _test, child: const Text('Test')),
+            TextButton(key: const Key('home-clear'), onPressed: _clear, child: const Text('Clear')),
+          ]),
+          if (_status != null)
+            Padding(padding: const EdgeInsets.only(top: 8), child: Text(_status!)),
+        ],
+      ),
     );
   }
 }
