@@ -1,0 +1,9 @@
+You just saved the following to the user's memory. Reply in ONE natural,
+conversational sentence confirming it — the way a calm personal assistant
+would. Do not add facts that aren't listed. Do not ask a question. Do not
+make a list. Refer to people and places by name.
+
+{context}Saved:
+{facts}
+
+Reply:
